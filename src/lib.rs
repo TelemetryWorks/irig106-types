@@ -1,14 +1,61 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! # irig106-types
+//!
+//! Foundational, dependency-free types shared across the TelemetryWorks
+//! IRIG 106 crate ecosystem (`irig106-core`, `irig106-time`,
+//! `irig106-decode`, `irig106-write`, `irig106-ch10-reader`).
+//!
+//! This crate holds only the *vocabulary* of IRIG 106: counters, wire-level
+//! time representations, time-related enumerations, and unit/epoch newtypes.
+//! It performs no I/O and no correlation. Interpretation of these values
+//! (e.g., converting Chapter 4 binary time to an absolute time of day) lives
+//! in the crates that consume them.
+//!
+//! ## Contents
+//!
+//! | Module | Types |
+//! |--------|-------|
+//! | [`rtc`] | [`Rtc`] (48-bit RTC), [`Ertc`] (64-bit extended RTC) |
+//! | [`binary_time`] | [`Ch4BinaryTime`], [`Ieee1588Time`] |
+//! | [`time_enums`] | [`TimeSource`], [`TimeFormat`], [`DateFormat`], [`SecHdrTimeFormat`] |
+//! | [`units`] | [`UnixSeconds`], [`TaiSeconds`], [`TaiUtcOffset`], [`NanosDuration`] |
+//! | [`error`] | [`TypesError`] |
+//!
+//! ## Features
+//!
+//! | Feature | Default | Effect |
+//! |---------|---------|--------|
+//! | `std` | yes | Implements `std::error::Error` for [`TypesError`] |
+//! | `serde` | no | `Serialize`/`Deserialize` on all public data types |
+//!
+//! The crate is `#![no_std]` and requires neither `std` nor `alloc`.
+//!
+//! ## Example
+//!
+//! ```
+//! use irig106_types::{NanosDuration, Rtc, TaiSeconds, TaiUtcOffset};
+//!
+//! let start = Rtc::from_le_bytes([0x80, 0x96, 0x98, 0x00, 0x00, 0x00]);
+//! let end = Rtc::from_raw(start.as_raw() + 5_000_000);
+//! assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).get());
+//!
+//! let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37));
+//! assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
+//! ```
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![no_std]
+#![deny(missing_docs)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod binary_time;
+pub mod error;
+pub mod rtc;
+pub mod time_enums;
+pub mod units;
+
+pub use binary_time::{Ch4BinaryTime, Ieee1588Time};
+pub use error::{Result, TypesError};
+pub use rtc::{Ertc, Rtc};
+pub use time_enums::{DateFormat, SecHdrTimeFormat, TimeFormat, TimeSource};
+pub use units::{NanosDuration, TaiSeconds, TaiUtcOffset, UnixSeconds};

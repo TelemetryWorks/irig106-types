@@ -1,7 +1,18 @@
 [package]
 name = "irig106-types"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
+rust-version = "1.60"
 description = "Zero-cost abstractions and foundational types for IRIG 106 telemetry."
 repository = "https://github.com/TelemetryWorks/irig106-types"
 license = "Apache-2.0"
+categories = ["aerospace", "no-std", "data-structures"]
+keywords = ["irig106", "telemetry", "chapter10", "flight-test", "types"]
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive"], optional = true }
