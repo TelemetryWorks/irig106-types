@@ -9,7 +9,7 @@ time-related enumerations, and unit/epoch newtypes, and nothing else: no I/O,
 no parsing of whole packets, no correlation.
 
 - `#![no_std]`, no `alloc`, no required dependencies
-- MSRV: Rust 1.60
+- Edition 2024, MSRV: Rust 1.85 (the same across the IRIG 106 ecosystem)
 - License: Apache-2.0
 
 ## Contents

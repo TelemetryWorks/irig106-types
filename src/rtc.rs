@@ -24,7 +24,7 @@
 
 use core::cmp::Ordering;
 
-use crate::error::{require_len, Result};
+use crate::error::{Result, require_len};
 
 /// Bitmask for the lower 48 bits.
 ///

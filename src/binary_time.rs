@@ -11,7 +11,7 @@
 //! | L3-CH4-001, L3-CH4-005 | Chapter 4 Binary Weighted Time struct and parsing |
 //! | L3-1588-001..003 | IEEE-1588 time struct, parsing, epoch nanos |
 
-use crate::error::{require_len, Result, TypesError};
+use crate::error::{Result, TypesError, require_len};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Chapter 4 Binary Weighted Time
