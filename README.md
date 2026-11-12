@@ -95,8 +95,10 @@ The previous parser swapped the microsecond and high-order words.
 Chapter 4 §4.7 and Figures 4-4/4-5 define a full 32-bit binary count,
 `high_order × 65536 + low_order`, at 10 ms per tick; high-order units are
 655.36 s. Low `0x8000` with high zero means 327.68 s, so the low word's top
-bit must survive. A conforming microsecond word is 0–9999, with its two
-leading positions zero. These raw parsers check length and preserve fields;
+bit must survive. In the 106-24R1 baseline, a conforming microsecond word
+is 0–9999, with its two leading positions zero. The review record below
+separates the inferred 106-04–106-09 packet order and older drawing differences.
+These raw parsers check length and preserve fields;
 reserved-bit/range validation and conversion remain with the consumer.
 
 `irig106-time` must advance its dependency after review/merge, remove any
