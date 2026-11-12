@@ -84,6 +84,28 @@ See [standard evidence, API changes, and adoption steps](docs/STANDARD-VALUES-RE
 
 Version remains **0.1.0**, not yet published; crates.io's 0.0.1 is a placeholder.
 
+## Chapter 4 binary time layout
+
+`Ch4BinaryTime::from_secondary_bytes` and `from_intra_packet_bytes` read
+four little-endian 16-bit words in this order:
+`[reserved, microseconds, low_order, high_order]` (106-24R1 Chapter 11
+Figure 11-4, printed 11-10; IPTS selection per §11.2.1.1 g / §11.2.1.3 b).
+The previous parser swapped the microsecond and high-order words.
+
+Chapter 4 §4.7 and Figures 4-4/4-5 define a full 32-bit binary count,
+`high_order × 65536 + low_order`, at 10 ms per tick; high-order units are
+655.36 s. Low `0x8000` with high zero means 327.68 s, so the low word's top
+bit must survive. A conforming microsecond word is 0–9999, with its two
+leading positions zero. These raw parsers check length and preserve fields;
+reserved-bit/range validation and conversion remain with the consumer.
+
+`irig106-time` must advance its dependency after review/merge, remove any
+workaround for the old word order, and replace 17-bit/day-of-year or 15-bit
+low-word interpretations with the full binary count. Update hand-written
+secondary-header and IPTS fixtures; PCM stream word insertion (Chapter 4)
+is distinct from this Chapter 11 byte layout. No public signatures changed.
+See the [page-image evidence and failing-test record](docs/STANDARD-VALUES-REVIEW.md#chapter-4-binary-time-layout-t-10).
+
 ## Development checks
 
 ```sh

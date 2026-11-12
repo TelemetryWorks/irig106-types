@@ -151,3 +151,129 @@ and stable wasm32-unknown-unknown. No project dependencies were added.
 This is executed local validation, not a claim about GitHub Actions results.
 Independent review and GitHub CI are required before merge; this assignment
 opens a PR only, without merge, publication, tags, or settings changes.
+
+
+## Chapter 4 binary time layout (T-10)
+
+Baseline: main `c59e0042669f69900e05dd6f23a987d30218ebd6`, clean checkout,
+origin `https://github.com/TelemetryWorks/irig106-types.git`. Tests-only
+commit `4a2499341ab085876aaf245f1548ce4842ff5e9e` adds hand-derived fixtures
+without implementation changes. This follow-up fixes types first under
+accepted `irig106-time` ADR-0015; no files in time are changed.
+
+### Verified page images and edition coverage
+
+Used the same manifest-verified standards archive described above, with:
+
+```sh
+python3 scripts/fetch.py --edition 106-24R1 --chapter 4
+python3 scripts/fetch.py --edition 106-05 --edition 106-07 --edition 106-09 --edition 106-11 --edition 106-13 --edition 106-15 --chapter 10 --kind chapter
+python3 scripts/fetch.py --edition 106-17 --edition 106-19 --edition 106-20 --edition 106-22 --edition 106-23 --edition 106-24 --edition 106-24R1 --chapter 11 --kind chapter
+pdftoppm -f 18 -l 18 -scale-to 1600 -png -singlefile files/106-24R1/chapter11.pdf figure-11-4
+pdftoppm -f 14 -l 15 -scale-to 2000 -png files/106-24R1/chapter4.pdf chapter4-figures
+```
+
+Rendered and visually inspected the baseline page and the following edition
+pages with `pdftoppm` and the image viewer; inspected the IPTS/flag text in
+each edition as well. Images/PDFs remain external to this Git repository.
+
+| Edition | Printed page / PDF page (1-based) | Evidence inspected |
+|---|---|---|
+| 106-05 | 10-25 / 29 | §10.6.1.2 a, §10.6.1.3 b: secondary and IPTS times selected by packet flags; no dedicated Chapter 4 secondary-time layout figure in this edition. |
+| 106-07 | 10-36 / 40 | Same sections and linkage; no dedicated Chapter 4 secondary-time layout figure. |
+| 106-09 | 10-34 / 44 | Same sections and linkage; no dedicated Chapter 4 secondary-time layout figure. |
+| 106-11 | 10-34 / 44 | §10.6.1.2 a, Figure 10-15: microseconds above reserved, high above low in the two 32-bit rows; §10.6.1.3 b links IPTS to flag-selected format. |
+| 106-13 | 10-33 / 45 | Figure 10-12: same layout. |
+| 106-15 | 10-30 / 42 | Figure 10-12: same layout. |
+| 106-17, 106-19, 106-20, 106-22, 106-23, 106-24, 106-24R1 | 11-10 / 18 in each | Figure 11-4: same layout. |
+| 106-24R1 Chapter 4 | 4-10 / 14 and 4-11 / 15 | §4.7, Figures 4-4 and 4-5: binary weighting, microsecond leading zeros, PCM insertion distinct from packet storage. |
+
+Figure 11-4 labels the first 32-bit row's high half **Micro-Seconds Word**
+and low half **Reserved**; the second row's high half **High Order Time
+Word** and low half **Low Order Time Word**. Section 11.1 defines least
+significant byte first. Thus the byte intervals are:
+
+| Bytes (half-open) | Little-endian 16-bit word |
+|---|---|
+| 0..2 | Reserved |
+| 2..4 | Microseconds |
+| 4..6 | Low-order time |
+| 6..8 | High-order time |
+
+For IPTS, §11.2.1.1 g bit 6 chooses RTC or secondary-header time; bits 3–2
+select Chapter 4 for the latter. Section 11.2.1.3 b specifies the flag-selected
+8-byte timestamp. The same correspondence is in the checked earlier editions
+(Chapter 10 §10.6.1.1 g / §10.6.1.3 b before 106-17).
+
+### Binary weighting and figure caveat
+
+Chapter 4 §4.7 explicitly says the high word's “lsb, bit 16, has a value of
+655.36 seconds” when binary weighted; the low word resolves 0.01 s. The ratio
+655.36 / 0.01 = 65536 gives a full 32-bit binary count across both words.
+There is no day-of-year partition or 17-bit-only counter in this binary
+representation. `low = 0x8000`, `high = 0` means 32768 × 0.01 = 327.68 s.
+
+Figures 4-4/4-5 show a zero in the low word's leading position alongside
+BCD/binary annotations. Applying that drawn zero as a binary mask would
+contradict the explicit 655.36-second high-word weighting; it is not forced
+to zero by this implementation. This preserves every high/low bit as requested.
+The microsecond word separately shows **two** leading zero positions;
+§4.7 defines 1 µs resolution, resetting at 10 ms, maximum 9999.
+
+Chapter 4's PCM insertion order (high, low, microseconds, with zero filler
+for a 12-bit PCM word size in Figure 4-5) is not the Chapter 11 packet-byte
+order. The parser handles the latter and retains raw words. As before, it
+validates length only, ignores the reserved word, and does not validate or
+mask the microsecond word. Consumers enforce conformance and absolute-time
+interpretation; no new validation policy or conversion API is introduced.
+
+### Hand-derived regression fixtures and executed before/after evidence
+
+`tests/t10_ch4_layout.rs` has no generated encodings or round-trip oracle.
+The distinct-word fixture is `[00 00 | 34 12 | 01 80 | 02 00]`: reserved=0,
+microseconds=4660, low=32769, high=2. All four words differ, and the valid
+microsecond word has both leading bits clear. Expected count is
+2 × 65536 + 32769 = 163841; expected duration is 1638.414660 s.
+
+Other literal fixtures cover low=0x8000 at 327.68 s, high=1 plus low=0x8000
+at 983.04 s, and high=low=0xFFFF at 42949672.95 s. Both parser entry points
+are checked against literal expected fields/counts, independently of each
+other. Arithmetic in the test expresses §4.7; this crate supplies no converter
+from which expected values could be copied.
+
+Executed `cargo test --test t10_ch4_layout` before the fix, on the tests-only
+commit's main implementation: **0 passed, 3 failed**.
+
+| Test | Before | After |
+|---|---|---|
+| `secondary_fields_from_figure_11_4` | Actual high=4660/usec=2; expected high=2/usec=4660 | PASS |
+| `intra_packet_fields_from_figure_11_4` | Same independent literal-field failure | PASS |
+| `binary_weighting_preserves_all_32_bits` | Actual 32768 ticks; expected 98304 (high=1, low=0x8000) | PASS |
+
+The isolated high=0/low=0x8000 fixture already passed before the fix; it
+remains a regression guard against adding a 15-bit low-word mask. The test
+as a whole failed at the next fixture, which distinguishes the swapped words.
+
+### API effect and irig106-time adoption
+
+Public type, fields, signatures, serde shape, and error behavior are unchanged.
+The behavior of `Ch4BinaryTime::from_secondary_bytes` and
+`from_intra_packet_bytes` changes: high now reads bytes 6..8 instead of 2..4,
+and microseconds now reads bytes 2..4 instead of 6..8. Low stays at 4..6.
+No bits of either count word are discarded.
+
+After independent review and merge, `irig106-time` must advance its pinned
+`irig106-types` dependency, remove workarounds for the old swap, and update
+secondary-header/IPTS byte fixtures. Its Chapter 4 conversion must use the
+full binary count (cast to u32 before shifting high by 16), then 10 ms per
+tick plus the microsecond fraction. Replace the prototype's 17-bit/day-of-year
+split; do not mask low to 15 bits. Validation of reserved and microsecond
+bits/ranges, calendar/year assumptions, and flag selection remain in time.
+
+Executed full local CI equivalent for this follow-up, with two build
+workers and the unchanged Rust stable / 1.85.0 toolchains: all ten commands
+in README passed. Each test configuration (all-features, no-default-features,
+serde) passed 41 unit tests, eight integration tests, and one doctest.
+MSRV checks (default, no-default, serde), clippy with `-D warnings`, fmt,
+docs with `-D warnings`, and the no-default wasm32 build passed. These are
+executed local checks, separate from source inspection and GitHub Actions.

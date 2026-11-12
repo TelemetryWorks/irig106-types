@@ -11,6 +11,7 @@ Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
 
 ### Fixed
 
+- T-10: `Ch4BinaryTime::from_secondary_bytes` and `from_intra_packet_bytes` now read `[reserved, microseconds, low_order, high_order]` as little-endian 16-bit words (106-24R1 Figure 11-4). Previously high-order and microseconds were swapped. Signatures and raw field types are unchanged; all 32 high/low count bits are preserved, including low `0x8000` (327.68 s). Documented Chapter 4 §4.7 weighting, microsecond leading zeros, and downstream adoption.
 - T-5: `Ertc::to_nanos` counts 1 ns per tick, retaining its `u128` return type; RTC stays at 100 ns.
 - T-6: source 3 decodes as `Reserved(3)`; removed the incorrect `TimeSource::Gps` variant. Renamed `InternalRtc` to `InternalFromRmm` for SRC 2, including the serde variant name. The SRC mapping applies from 106-05; 106-04 defines EXT bit 0 and reserves bits 3–1.
 - T-7: FMT 0xF decodes as the new `TimeFormat::None` (payload invalid) from 106-05 onward; 106-04 reserves FMT 0x6–0xF. Edition handling remains in `irig106-time`.
