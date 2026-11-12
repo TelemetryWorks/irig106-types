@@ -14,8 +14,9 @@ use super::*;
 fn time_source_from_raw() {
     assert_eq!(TimeSource::from_raw(0), TimeSource::Internal);
     assert_eq!(TimeSource::from_raw(1), TimeSource::External);
-    assert_eq!(TimeSource::from_raw(2), TimeSource::InternalRtc);
-    assert_eq!(TimeSource::from_raw(3), TimeSource::Gps);
+    assert_eq!(TimeSource::from_raw(2), TimeSource::InternalFromRmm);
+    // 106-24R1 §11.2.3.2 a / Figure 11-12: SRC 3 is reserved.
+    assert_eq!(TimeSource::from_raw(3), TimeSource::Reserved(3));
     assert_eq!(TimeSource::from_raw(0xF), TimeSource::None);
     assert_eq!(TimeSource::from_raw(7), TimeSource::Reserved(7));
 }
@@ -29,6 +30,8 @@ fn time_format_from_raw() {
     assert_eq!(TimeFormat::from_raw(4), TimeFormat::Utc);
     assert_eq!(TimeFormat::from_raw(5), TimeFormat::Gps);
     assert_eq!(TimeFormat::from_raw(9), TimeFormat::Reserved(9));
+    // 106-24R1 §11.2.3.2 a / Figure 11-12: FMT NONE.
+    assert_eq!(TimeFormat::from_raw(15), TimeFormat::None);
 }
 
 #[test]
