@@ -20,34 +20,57 @@ use crate::error::{Result, TypesError, require_len};
 /// IRIG 106 Chapter 4 Binary Weighted Time.
 ///
 /// Used in secondary headers (Packet Flag bits \[3:2\] = 0b00) and intra-packet
-/// timestamps.
+/// timestamps. The binary high/low words form a full 32-bit count in 10 ms
+/// units: `high_order × 65536 + low_order` (106-24R1 Chapter 4 §4.7).
+/// No bit of either word is masked, including the top bit of the low word.
+///
+/// This is a raw representation: parsing checks buffer length, ignores the
+/// reserved word, and preserves the three time words without validating them.
+/// Consumers handle reserved-bit checks and conversion to absolute time.
 ///
 /// **Traces:** L3-CH4-001 ← L2-ABS-003 ← L1-ABS-002
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ch4BinaryTime {
-    /// High-order 16 bits of the binary time word.
+    /// High-order 16 bits of the binary count; one unit is 655.36 seconds.
+    ///
+    /// 106-24R1 Chapter 4 §4.7, Figures 4-4/4-5.
     pub high_order: u16,
-    /// Low-order 16 bits of the binary time word.
+    /// Low-order 16 bits of the binary count; one unit is 10 milliseconds.
+    ///
+    /// All 16 bits are retained, including bit 15 (327.68 seconds).
     pub low_order: u16,
-    /// Microsecond component.
+    /// Raw microsecond word; a conforming value is 0–9999.
+    ///
+    /// Figures 4-4/4-5 show its two leading positions zero; §4.7 defines
+    /// 1 microsecond resolution and reset at 10 ms. Parsing does not mask
+    /// or validate this word.
     pub microseconds: u16,
 }
 
 impl Ch4BinaryTime {
-    /// Parse from an 8-byte little-endian buffer: `[unused(2), high(2), low(2), usec(2)]`.
+    /// Parse `[reserved(2), microseconds(2), low_order(2), high_order(2)]`.
+    ///
+    /// Each word is little-endian, per 106-24R1 §11.1 and Figure 11-4
+    /// (printed page 11-10), with the low 16-bit half of each 32-bit row
+    /// appearing first in the byte stream. The reserved word is ignored;
+    /// all bits of the time words are preserved. Only length is validated.
     ///
     /// **Traces:** L3-CH4-005
     pub fn from_secondary_bytes(buf: &[u8]) -> Result<Self> {
         require_len(buf, 8)?;
         Ok(Self {
-            high_order: u16::from_le_bytes([buf[2], buf[3]]),
+            high_order: u16::from_le_bytes([buf[6], buf[7]]),
             low_order: u16::from_le_bytes([buf[4], buf[5]]),
-            microseconds: u16::from_le_bytes([buf[6], buf[7]]),
+            microseconds: u16::from_le_bytes([buf[2], buf[3]]),
         })
     }
 
-    /// Parse from an 8-byte intra-packet time stamp buffer.
+    /// Parse an 8-byte intra-packet time stamp in the same layout as
+    /// [`Self::from_secondary_bytes`].
+    ///
+    /// Applies when the packet flags select Chapter 4 secondary-header time
+    /// for IPTS (106-24R1 §11.2.1.1 g and §11.2.1.3 b).
     ///
     /// **Traces:** L3-CH4-005
     pub fn from_intra_packet_bytes(buf: &[u8]) -> Result<Self> {

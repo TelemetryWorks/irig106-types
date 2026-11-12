@@ -4,7 +4,7 @@
 //!
 //! | Test | Validates | Traces |
 //! |------|-----------|--------|
-//! | `ch4_from_secondary_bytes` | Fields decode from bytes [2..8] | L3-CH4-005 |
+//! | `ch4_from_secondary_bytes` | Reserved/usec/low/high words decode per Figure 11-4 | L3-CH4-005 |
 //! | `ch4_short_buffer_rejected` | < 8 bytes rejected | L3-CH4-005 |
 //! | `ch4_intra_packet_matches_secondary` | Same layout for both sources | L3-CH4-005 |
 //! | `ieee1588_from_le_bytes` | Nanos/seconds decode | L3-1588-002 |
@@ -16,7 +16,8 @@ use super::*;
 
 #[test]
 fn ch4_from_secondary_bytes() {
-    let buf = [0xAA, 0xBB, 0x34, 0x12, 0x78, 0x56, 0xE8, 0x03];
+    // 106-24R1 Figure 11-4: reserved, usec=1000, low=0x5678, high=0x1234.
+    let buf = [0x00, 0x00, 0xE8, 0x03, 0x78, 0x56, 0x34, 0x12];
     let t = Ch4BinaryTime::from_secondary_bytes(&buf).unwrap();
     assert_eq!(t.high_order, 0x1234);
     assert_eq!(t.low_order, 0x5678);
