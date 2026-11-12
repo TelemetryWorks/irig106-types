@@ -14,6 +14,7 @@ PDFs came from `TelemetryWorks/rcc-106-standards` at
 size and SHA-256 against the manifest. Selected downloads:
 
 ```sh
+python3 scripts/fetch.py --edition 106-04 --kind full
 python3 scripts/fetch.py --edition 106-24R1 --chapter 11
 python3 scripts/fetch.py --edition 106-05 --edition 106-07 --edition 106-13 --edition 106-15 --chapter 10
 python3 scripts/fetch.py --edition 106-17 --edition 106-22 --edition 106-23 --edition 106-24 --chapter 11
@@ -27,9 +28,9 @@ standard text are not committed.
 | Finding | Primary evidence | Fixture derivation |
 |---|---|---|
 | T-5 | 106-24R1 §11.2.1.1 g, Figure 11-6, pp. 11-9–10 | 1 GHz gives 1 ns/tick; LSLW precedes MSLW. Explicit LE fixtures for 0, 1, 100, 2^32, 2^64−1; 100 ERTC ticks and 1 RTC tick both give 100 ns. |
-| T-6 | §11.2.3.2 a, Figure 11-12, pp. 11-23–25 | SRC 0 internal, 1 external, 2 RMM, 3–14 reserved, 15 none. Same table in 106-05 Figure 10-16a, 106-07 Figure 10-22, 106-13/15 Figure 10-19 (§10.6.3.2). |
-| T-7 | §11.2.3.2 a, Figure 11-12, pp. 11-23–25 | FMT 15 NONE; ITS 0–7 enumerated explicitly, 8–15 reserved. 106-15 Figure 10-19 reserves bits 31–12; 106-17 §11.2.3.2 defines ITS. |
-| T-9 | §11.2.7.2, Figure 11-34, pp. 11-50–51; §11.2.1.1 e, Table 11-4, p. 11-6 | Two explicit edition lists and every byte value tested. Setup 7–14 vs header 1–10. All other bytes unknown. 106-07 §10.6.7.2/Figure 10-50 reserves setup 0–6 too. 106-22/23/24/24R1 keep setup 14 = 106-22. |
+| T-6 | §11.2.3.2 a, Figure 11-12, pp. 11-23–25 | SRC mapping from 106-05: 0 internal, 1 external, 2 RMM, 3–14 reserved, 15 none. 106-04 §10.6.3.3/Figure 10-15 defines EXT instead. Same SRC table in 106-05 Figure 10-16a, 106-07 Figure 10-22, 106-13/15 Figure 10-19 (§10.6.3.2). |
+| T-7 | §11.2.3.2 a, Figure 11-12, pp. 11-23–25 | FMT 15 NONE from 106-05; 106-04 §10.6.3.3/Figure 10-15 reserves FMT 6–15. ITS 0–7 enumerated explicitly, 8–15 reserved. 106-15 Figure 10-19 reserves bits 31–12; 106-17 §11.2.3.2 defines ITS. |
+| T-9 | §11.2.7.2, Figure 11-34, pp. 11-50–51; §11.2.1.1 e (version code list), Table 11-4 (current version per data type), p. 11-6 | Two explicit edition lists and every byte value tested. Setup 7–14 vs header 1–10. All other bytes unknown. 106-07 §10.6.7.2/Figure 10-50 reserves setup 0–6 too. 106-22/23/24/24R1 keep setup 14 = 106-22. |
 
 ## Before/after executed evidence
 
@@ -58,10 +59,13 @@ standard after capturing the failures above.
   and byte parsing are unchanged.
 - Remove `TimeSource::Gps`. `TimeSource::from_raw(3)` now returns
   `Reserved(3)`. Serde no longer accepts/emits the erroneous `Gps` source
-  variant. `InternalRtc` remains named as before, documented correctly as
-  internal from RMM; other SRC variants/signatures are unchanged.
+  variant. Rename `InternalRtc` to `InternalFromRmm` for SRC 2; serde
+  likewise uses `InternalFromRmm` instead of `InternalRtc`. Other SRC
+  variants/signatures are unchanged. This mapping applies from 106-05;
+  106-04 has EXT instead, handled by `irig106-time`.
 - Add `TimeFormat::None`; `from_raw(15)` now returns it. Exhaustive matches
-  need a new arm; serde gains `None`. It means invalid payload, not RTC.
+  need a new arm; serde gains `None`. It means invalid payload, not RTC,
+  from 106-05 onward. 106-04 reserves FMT 6–15; edition handling stays in time.
 - Add `time_enums::IrigTimeSource`, also re-exported at root, with variants
   `Freewheeling`, `TimeCommand`, `Rmm`, `ExternalIrig`, `ExternalGps`,
   `ExternalNtp`, `ExternalPtp`, `Embedded`, `Reserved(u8)` and
@@ -80,12 +84,17 @@ standard after capturing the failures above.
 1. Update its git dependency from `e513af4` to the independently reviewed
    merge commit containing this change (or an owner-authorized release).
 2. Remove `TimeSource::Gps` matches and source-3 version-specific GPS/None
-   interpretation (`has_gps_time_source`); preserve/report reserved source.
+   interpretation (`has_gps_time_source`); preserve/report reserved SRC
+   values from 106-05 onward. Rename `InternalRtc` matches and serde data to
+   `InternalFromRmm`. For 106-04, decode EXT bit 0 and validate reserved bits
+   3–1 instead of using the SRC mapping. Its packet data type version is
+   0x01 (Initial Release; called Header Version in 106-04 §10.6.1.1.5).
    Do not confuse SRC with FMT's valid native GPS or ITS's external GPS.
 3. Use corrected ERTC nanoseconds without an extra factor of 100. Revise
    conversion/correlation fixtures that assumed 100 ns ERTC ticks.
-4. Handle `TimeFormat::None` as invalid payload before constructing a time
-   reference. Decode ITS bits 15–12 via `IrigTimeSource::from_raw` only when
+4. Handle `TimeFormat::None` as invalid payload from 106-05 onward before
+   constructing a time reference; for 106-04, FMT 0x6–0xF is reserved.
+   Decode ITS bits 15–12 via `IrigTimeSource::from_raw` only when
    applicable. Retain CSDW extraction and validation in time: reserved bits
    31–16 and 11–10 (mask 0xFFFF_0C00) for the ITS layout; before 106-17,
    bits 31–12 and 11–10 (mask 0xFFFF_FC00). Report ITS as not reported
@@ -102,9 +111,15 @@ standard after capturing the failures above.
 
 ## Source limitations and ambiguities
 
-- 106-04 Chapter 10 is absent from the archive, as the finding records.
-  No evidence supports the prototype's source-3 GPS/None rule. The checked
-  editions reserve it; no special legacy interpretation is added here.
+- 106-04 Chapter 10 **is archived** inside `files/106-04/106-04.pdf`, headed
+  “SOLID STATE ON-BOARD RECORDER STANDARD”. Verified §10.6.3.3, Figure 10-15,
+  pp. 10-30–31: the layout is RESERVED | DATE | FMT | EXT. “Bit 0 indicates
+  if the external time source is present”; “Bits 3-1 are reserved”; FMT
+  “0x6 thru 0xF = Reserved.” The SRC table and FMT NONE first appear in
+  106-05 Figure 10-16a. The prototype's claim that 3 means None in 106-04
+  is incorrect. Edition-aware EXT/SRC and FMT handling belongs to time.
+  The 106-04 header uses 0x01, “Initial Release Header Version”
+  (§10.6.1.1.5, p. 10-19), named 106-04 by the later data type version list.
 - ITS is edition-dependent: 106-15 §10.6.3.2 says “Bits 31-12 are reserved.”
   106-17 §11.2.3.2 defines “IRIG Time Source (ITS). Bits 15-12” while
   Table 11-4 still assigns Format 1 data type version 0x06. This library
@@ -112,14 +127,15 @@ standard after capturing the failures above.
 - 106-24R1 §11.2.7.2 says “0x0E = RCC 106-22” and “0x0F through 0xFF = Reserved”.
   This cannot identify the exact later recording edition. The unchanged
   table through 106-24R1 is an observation, not a guarantee about the future.
-- FMT 15 is explicitly “NONE (time packet payload invalid)”. Consumers
+- From 106-05 onward, FMT 15 is explicitly “NONE (time packet payload invalid)”. Consumers
   must enforce that; a foundational enum does not parse/validate a body.
 
 No blocking standard ambiguity for the shared mappings implemented here.
 
 ## Executed local CI equivalent
 
-All ten workflow commands listed in README passed on this cloud host,
+All ten workflow commands listed in README passed again after the review
+corrections and `InternalFromRmm` rename on this cloud host,
 with `CARGO_BUILD_JOBS=2`. Stable was rustc 1.99.1; the MSRV checks used
 rustc 1.85.0. Installed via rustup: stable, 1.85.0, stable clippy/rustfmt,
 and stable wasm32-unknown-unknown. No project dependencies were added.

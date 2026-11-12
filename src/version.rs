@@ -61,8 +61,9 @@ impl Irig106Version {
 
     /// Decode the packet primary header's data type version byte.
     ///
-    /// 106-24R1 §11.2.1.1 e and Table 11-4: 0x01–0x0A name
+    /// 106-24R1 §11.2.1.1 e lists the version codes: 0x01–0x0A name
     /// 106-04 through 106-22; 0x00 and 0x0B–0xFF are reserved.
+    /// Table 11-4 separately gives each data type's current version.
     /// This is not the header's data type byte or the setup-record RCCVER.
     #[inline]
     pub fn from_data_type_version(val: u8) -> Self {

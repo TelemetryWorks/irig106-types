@@ -13,9 +13,10 @@
 /// Time source applied to the recorder.
 ///
 /// Decoded from bits \[3:0\] of the Time Data Format 1 CSDW
-/// (106-24R1 §11.2.3.2 a, Figure 11-12). Values 3–14 are reserved, also in
-/// the archived 106-05, 106-07, 106-13, and 106-15 editions. The archive
-/// lacks 106-04 Chapter 10; no alternate mapping is assumed.
+/// (106-24R1 §11.2.3.2 a, Figure 11-12). This SRC mapping applies from
+/// 106-05 onward; values 3–14 are reserved. In 106-04 §10.6.3.3,
+/// Figure 10-15, these bits are EXT: bit 0 indicates external time present,
+/// and bits 3–1 are reserved. Edition handling belongs to `irig106-time`.
 ///
 /// **Traces:** L3-CSDW-008 ← L2-CSDW-003 ← L1-CSDW-002
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -26,8 +27,7 @@ pub enum TimeSource {
     /// External time source (0x1).
     External,
     /// Internal from RMM: time derived from the clock in the RMM (0x2).
-    /// The historical variant name is retained for compatibility.
-    InternalRtc,
+    InternalFromRmm,
     /// No time source (0xF).
     None,
     /// Reserved or unrecognized value.
@@ -35,13 +35,13 @@ pub enum TimeSource {
 }
 
 impl TimeSource {
-    /// Decode the extracted SRC field; reserved/unrecognized values are preserved.
+    /// Decode the extracted 106-05-and-later SRC field, preserving reserved values.
     #[inline]
     pub fn from_raw(val: u8) -> Self {
         match val {
             0 => TimeSource::Internal,
             1 => TimeSource::External,
-            2 => TimeSource::InternalRtc,
+            2 => TimeSource::InternalFromRmm,
             0xF => TimeSource::None,
             other => TimeSource::Reserved(other),
         }
@@ -50,7 +50,10 @@ impl TimeSource {
 
 /// Format of the external time source.
 ///
-/// Decoded from bits \[7:4\] of the Time Data Format 1 CSDW.
+/// Decoded from bits \[7:4\] of the Time Data Format 1 CSDW using the
+/// 106-05-and-later mapping. In 106-04 §10.6.3.3, Figure 10-15, FMT
+/// 0x6–0xF is reserved; NONE at 0xF applies from 106-05 onward.
+/// Edition handling belongs to `irig106-time`.
 ///
 /// **Traces:** L3-CSDW-009 ← L2-CSDW-005 ← L1-CSDW-003
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -68,7 +71,7 @@ pub enum TimeFormat {
     Utc,
     /// Native GPS time (0x5).
     Gps,
-    /// NONE (0xF): the time packet payload is invalid.
+    /// NONE (0xF) from 106-05 onward: the time packet payload is invalid.
     ///
     /// 106-24R1 §11.2.3.2 a, Figure 11-12. Consumers must not interpret
     /// the payload as a valid time reference.
@@ -78,7 +81,7 @@ pub enum TimeFormat {
 }
 
 impl TimeFormat {
-    /// Decode from the 4-bit raw field value.
+    /// Decode the extracted FMT field using the 106-05-and-later mapping.
     #[inline]
     pub fn from_raw(val: u8) -> Self {
         match val {

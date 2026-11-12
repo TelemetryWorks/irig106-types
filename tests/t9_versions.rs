@@ -6,7 +6,8 @@ fn t9_two_version_tables() {
     // 106-24R1 §11.2.7.2 / Figure 11-34: RCCVER table, 0..6 reserved.
     // 106-07 §10.6.7.2 Figure 10-50 also reserves 0..6 (not Pre07).
     let setup = [V07, V09, V11, V13, V15, V17, V19, V22];
-    // 106-24R1 §11.2.1.1 e / Table 11-4: header data type version.
+    // 106-24R1 §11.2.1.1 e lists header data type version codes;
+    // Table 11-4 gives each data type's current version.
     // These are version *codes*, not the packet data type byte.
     let header = [V04, V05, V07, V09, V11, V13, V15, V17, V19, V22];
     for raw in 0..=255_u8 {

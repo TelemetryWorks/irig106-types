@@ -14,7 +14,7 @@ use super::*;
 fn time_source_from_raw() {
     assert_eq!(TimeSource::from_raw(0), TimeSource::Internal);
     assert_eq!(TimeSource::from_raw(1), TimeSource::External);
-    assert_eq!(TimeSource::from_raw(2), TimeSource::InternalRtc);
+    assert_eq!(TimeSource::from_raw(2), TimeSource::InternalFromRmm);
     // 106-24R1 §11.2.3.2 a / Figure 11-12: SRC 3 is reserved.
     assert_eq!(TimeSource::from_raw(3), TimeSource::Reserved(3));
     assert_eq!(TimeSource::from_raw(0xF), TimeSource::None);

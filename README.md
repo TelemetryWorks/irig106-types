@@ -52,9 +52,12 @@ assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
 The baseline is IRIG 106-24R1 Chapter 11:
 
 - ERTC counts **1 ns/tick** (§11.2.1.1 g, Figure 11-6); RTC remains 100 ns/tick.
-- Format 1 SRC `0x3`–`0xE` is reserved, never GPS. SRC `0x2` is internal
-  from RMM (the existing `InternalRtc` variant name is retained).
-- FMT `0xF` is `TimeFormat::None`: **the payload is invalid**.
+- From 106-05 onward, Format 1 SRC `0x3`–`0xE` is reserved, never GPS.
+  SRC `0x2` is `InternalFromRmm`: internal from the clock in the RMM.
+- From 106-05 onward, FMT `0xF` is `TimeFormat::None`: **the payload is invalid**.
+  The archived 106-04 full PDF (§10.6.3.3, Figure 10-15) instead defines
+  EXT bit 0 (external time present), reserves bits 3–1, and reserves FMT
+  `0x6`–`0xF`. Consumers must handle the edition before using these mappings.
 - `IrigTimeSource::from_raw` decodes the eight ITS values in bits 15–12
   (§11.2.3.2 a, Figure 11-12). ITS applies only to IRIG-A/B/G and is defined
   from 106-17 onward; older editions reserve those bits. This raw mapping
@@ -62,17 +65,21 @@ The baseline is IRIG 106-24R1 Chapter 11:
 - `Irig106Version::from_setup_record` maps the extracted RCCVER byte:
   `0x07`–`0x0E` name RCC 106-07 through RCC 106-22 (§11.2.7.2, Figure 11-34).
 - `Irig106Version::from_data_type_version` uses the separate packet-header
-  table: `0x01`–`0x0A` name RCC 106-04 through RCC 106-22 (§11.2.1.1 e,
-  Table 11-4). This describes a data type's layout, not the recording edition.
+  code list in §11.2.1.1 e: `0x01`–`0x0A` name RCC 106-04 through RCC 106-22.
+  Table 11-4 separately gives each data type's current version.
+  This describes a data type's layout, not the recording edition.
 - Reserved/unrecognized version codes become `Unknown(raw)`. In particular,
   `0x0F` is unknown in both mappings; setup-record zero is also unknown.
   The 106-22 entries are unchanged through 106-24R1; neither mapping can
   distinguish 106-22, 106-23, 106-24, and 106-24R1 recordings.
 
-Consumers must remove `TimeSource::Gps` matches, handle `TimeFormat::None`,
+Consumers must remove `TimeSource::Gps` matches, rename `InternalRtc` to
+`InternalFromRmm` (including serde consumers), handle `TimeFormat::None`,
 and use the version constructor appropriate to the field. `irig106-time`
 retains CSDW parsing, reserved-bit validation (31–16 and 11–10; 31–12 before
-ITS), payload validity enforcement, and edition-dependent ITS interpretation.
+ITS), payload validity enforcement, and edition-dependent EXT/SRC, FMT, and ITS
+interpretation. 106-04 uses packet data type version `0x01` (Initial Release);
+that header field was called Header Version in 106-04 §10.6.1.1.5.
 See [standard evidence, API changes, and adoption steps](docs/STANDARD-VALUES-REVIEW.md).
 
 Version remains **0.1.0**, not yet published; crates.io's 0.0.1 is a placeholder.

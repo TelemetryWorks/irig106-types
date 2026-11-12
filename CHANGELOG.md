@@ -12,8 +12,9 @@ Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
 ### Fixed
 
 - T-5: `Ertc::to_nanos` counts 1 ns per tick, retaining its `u128` return type; RTC stays at 100 ns.
-- T-6: source 3 decodes as `Reserved(3)`; removed the incorrect `TimeSource::Gps` variant. SRC 2 means internal from RMM; the `InternalRtc` name remains for compatibility.
-- T-7: FMT 0xF decodes as the new `TimeFormat::None` (payload invalid).
+- T-6: source 3 decodes as `Reserved(3)`; removed the incorrect `TimeSource::Gps` variant. Renamed `InternalRtc` to `InternalFromRmm` for SRC 2, including the serde variant name. The SRC mapping applies from 106-05; 106-04 defines EXT bit 0 and reserves bits 3–1.
+- T-7: FMT 0xF decodes as the new `TimeFormat::None` (payload invalid) from 106-05 onward; 106-04 reserves FMT 0x6–0xF. Edition handling remains in `irig106-time`.
+- Corrected the archive evidence: 106-04 Chapter 10 is in the full PDF (§10.6.3.3, Figure 10-15); clarified that §11.2.1.1 e lists version codes and Table 11-4 gives each data type's current version.
 
 ### Added
 

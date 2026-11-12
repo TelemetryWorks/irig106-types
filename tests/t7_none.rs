@@ -3,7 +3,9 @@ use irig106_types::TimeFormat;
 #[test]
 fn t7_format_none() {
     // 106-24R1 §11.2.3.2 a / Figure 11-12: FMT 0xF = NONE
-    // (time packet payload invalid). A string assertion also runs on
+    // (time packet payload invalid), defined from 106-05 onward.
+    // 106-04 §10.6.3.3 / Figure 10-15 reserves FMT 0x6–0xF;
+    // irig106-time handles that edition difference. A string assertion runs on
     // pre-fix main, where the None variant does not exist yet.
     assert_eq!(format!("{:?}", TimeFormat::from_raw(15)), "None");
     for raw in 6..=14 {
