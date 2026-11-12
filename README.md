@@ -16,10 +16,11 @@ no parsing of whole packets, no correlation.
 
 | Module | Types | Notes |
 |--------|-------|-------|
-| `rtc` | `Rtc`, `Ertc` | 48-bit RTC (masked, wrap-aware elapsed time) and 64-bit extended RTC, 100 ns/tick |
+| `rtc` | `Rtc`, `Ertc` | 48-bit RTC (masked, wrap-aware elapsed time) at 100 ns/tick; 64-bit ERTC at 1 ns/tick |
 | `binary_time` | `Ch4BinaryTime`, `Ieee1588Time` | Raw secondary-header / intra-packet time fields |
-| `time_enums` | `TimeSource`, `TimeFormat`, `DateFormat`, `SecHdrTimeFormat` | Decoded CSDW / packet-flag fields |
+| `time_enums` | `TimeSource`, `TimeFormat`, `IrigTimeSource`, `DateFormat`, `SecHdrTimeFormat` | Decoded CSDW / packet-flag fields |
 | `units` | `UnixSeconds`, `TaiSeconds`, `TaiUtcOffset`, `NanosDuration` | `#[repr(transparent)]` newtypes that prevent unit and epoch mix-ups |
+| `version` | `Irig106Version` | Separate setup-record RCCVER and packet-header data type version mappings |
 | `error` | `TypesError` | `BufferTooShort`, `OutOfRange` |
 
 Interpretation of these values (e.g., Chapter 4 binary time → time of day,
@@ -45,3 +46,48 @@ assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
 |---------|---------|--------|
 | `std` | yes | `impl std::error::Error for TypesError` |
 | `serde` | no | `Serialize`/`Deserialize` on all public data types (newtypes are `#[serde(transparent)]`) |
+
+## Standard values and adoption
+
+The baseline is IRIG 106-24R1 Chapter 11:
+
+- ERTC counts **1 ns/tick** (§11.2.1.1 g, Figure 11-6); RTC remains 100 ns/tick.
+- Format 1 SRC `0x3`–`0xE` is reserved, never GPS. SRC `0x2` is internal
+  from RMM (the existing `InternalRtc` variant name is retained).
+- FMT `0xF` is `TimeFormat::None`: **the payload is invalid**.
+- `IrigTimeSource::from_raw` decodes the eight ITS values in bits 15–12
+  (§11.2.3.2 a, Figure 11-12). ITS applies only to IRIG-A/B/G and is defined
+  from 106-17 onward; older editions reserve those bits. This raw mapping
+  does not decide whether ITS applies to a recording.
+- `Irig106Version::from_setup_record` maps the extracted RCCVER byte:
+  `0x07`–`0x0E` name RCC 106-07 through RCC 106-22 (§11.2.7.2, Figure 11-34).
+- `Irig106Version::from_data_type_version` uses the separate packet-header
+  table: `0x01`–`0x0A` name RCC 106-04 through RCC 106-22 (§11.2.1.1 e,
+  Table 11-4). This describes a data type's layout, not the recording edition.
+- Reserved/unrecognized version codes become `Unknown(raw)`. In particular,
+  `0x0F` is unknown in both mappings; setup-record zero is also unknown.
+  The 106-22 entries are unchanged through 106-24R1; neither mapping can
+  distinguish 106-22, 106-23, 106-24, and 106-24R1 recordings.
+
+Consumers must remove `TimeSource::Gps` matches, handle `TimeFormat::None`,
+and use the version constructor appropriate to the field. `irig106-time`
+retains CSDW parsing, reserved-bit validation (31–16 and 11–10; 31–12 before
+ITS), payload validity enforcement, and edition-dependent ITS interpretation.
+See [standard evidence, API changes, and adoption steps](docs/STANDARD-VALUES-REVIEW.md).
+
+Version remains **0.1.0**, not yet published; crates.io's 0.0.1 is a placeholder.
+
+## Development checks
+
+```sh
+cargo test --all-features
+cargo test --no-default-features
+cargo test --features serde
+cargo +1.85.0 check --no-default-features
+cargo +1.85.0 check
+cargo +1.85.0 check --features serde
+cargo clippy --all-targets --all-features -- -D warnings
+cargo fmt --all -- --check
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+cargo build --target wasm32-unknown-unknown --no-default-features
+```

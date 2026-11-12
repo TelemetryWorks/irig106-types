@@ -16,8 +16,9 @@
 //! |--------|-------|
 //! | [`rtc`] | [`Rtc`] (48-bit RTC), [`Ertc`] (64-bit extended RTC) |
 //! | [`binary_time`] | [`Ch4BinaryTime`], [`Ieee1588Time`] |
-//! | [`time_enums`] | [`TimeSource`], [`TimeFormat`], [`DateFormat`], [`SecHdrTimeFormat`] |
+//! | [`time_enums`] | [`TimeSource`], [`TimeFormat`], [`IrigTimeSource`], [`DateFormat`], [`SecHdrTimeFormat`] |
 //! | [`units`] | [`UnixSeconds`], [`TaiSeconds`], [`TaiUtcOffset`], [`NanosDuration`] |
+//! | [`version`] | [`Irig106Version`] (separate setup/header code mappings) |
 //! | [`error`] | [`TypesError`] |
 //!
 //! ## Features
@@ -53,9 +54,11 @@ pub mod error;
 pub mod rtc;
 pub mod time_enums;
 pub mod units;
+pub mod version;
 
 pub use binary_time::{Ch4BinaryTime, Ieee1588Time};
 pub use error::{Result, TypesError};
 pub use rtc::{Ertc, Rtc};
-pub use time_enums::{DateFormat, SecHdrTimeFormat, TimeFormat, TimeSource};
+pub use time_enums::{DateFormat, IrigTimeSource, SecHdrTimeFormat, TimeFormat, TimeSource};
 pub use units::{NanosDuration, TaiSeconds, TaiUtcOffset, UnixSeconds};
+pub use version::Irig106Version;

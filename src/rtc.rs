@@ -145,8 +145,9 @@ impl Ord for Rtc {
 /// 64-bit Extended Relative Time Counter.
 ///
 /// Used in secondary headers (Packet Flag bits \[3:2\] = 0b10) and
-/// intra-packet time stamps. Like [`Rtc`], it ticks at 10 MHz (100 ns/tick),
-/// but spans the full 64 bits.
+/// intra-packet time stamps. It ticks at 1 GHz (1 ns/tick), spanning all 64
+/// bits. The primary-header RTC is synchronized as RTC = ERTC/100
+/// (106-24R1 §11.2.1.1 g, Figure 11-6).
 ///
 /// **Traces:** L3-ERTC-001 ← L2-ABS-007 ← L1-ABS-004
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -177,12 +178,14 @@ impl Ertc {
         self.0
     }
 
-    /// Convert to nanoseconds. Returns `u128` to avoid overflow.
+    /// Convert to nanoseconds (one nanosecond per tick).
+    ///
+    /// The existing `u128` return type is retained for compatibility.
     ///
     /// **Traces:** L3-ERTC-003 ← L2-ABS-008
     #[inline]
     pub fn to_nanos(self) -> u128 {
-        (self.0 as u128) * (NANOS_PER_TICK as u128)
+        self.0 as u128
     }
 }
 

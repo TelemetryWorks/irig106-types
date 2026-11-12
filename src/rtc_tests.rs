@@ -25,7 +25,7 @@
 //! | `ertc_from_le_bytes` | ERTC decodes from 8 LE bytes | L3-ERTC-002 |
 //! | `ertc_from_le_bytes_short_buffer` | Short buffer rejected | L3-ERTC-002 |
 //! | `ertc_from_raw_round_trip` | `from_raw → as_raw` round-trips | L3-ERTC-001 |
-//! | `ertc_to_nanos` | Nanos = ticks × 100 | L3-ERTC-003 |
+//! | `ertc_to_nanos` | Nanos = ticks (1 ns per ERTC tick) | L3-ERTC-003 |
 //! | `ertc_max_no_overflow` | `u64::MAX` ticks fit in `u128` nanos | L3-ERTC-003 |
 
 use super::*;
@@ -179,12 +179,13 @@ fn ertc_from_raw_round_trip() {
 #[test]
 fn ertc_to_nanos() {
     let e = Ertc::from_le_bytes(&[10, 0, 0, 0, 0, 0, 0, 0]).unwrap();
-    assert_eq!(e.to_nanos(), 1_000); // 10 * 100
+    // 106-24R1 §11.2.1.1 g / Figure 11-6: 1 ns/tick.
+    assert_eq!(e.to_nanos(), 10);
 }
 
 #[test]
 fn ertc_max_no_overflow() {
     let e = Ertc::from_le_bytes(&[0xFF; 8]).unwrap();
-    // u64::MAX * 100 fits in u128
-    assert_eq!(e.to_nanos(), (u64::MAX as u128) * 100);
+    // 106-24R1 §11.2.1.1 g / Figure 11-6: full 64-bit nanoseconds.
+    assert_eq!(e.to_nanos(), 18_446_744_073_709_551_615);
 }
