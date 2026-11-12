@@ -166,7 +166,8 @@ accepted `irig106-time` ADR-0015; no files in time are changed.
 Used the same manifest-verified standards archive described above, with:
 
 ```sh
-python3 scripts/fetch.py --edition 106-24R1 --chapter 4
+python3 scripts/fetch.py --edition 106-04 --kind full
+python3 scripts/fetch.py --edition 106-05 --edition 106-07 --edition 106-09 --edition 106-11 --edition 106-13 --edition 106-15 --edition 106-17 --edition 106-19 --edition 106-20 --edition 106-22 --edition 106-23 --edition 106-24 --edition 106-24R1 --chapter 4 --kind chapter
 python3 scripts/fetch.py --edition 106-05 --edition 106-07 --edition 106-09 --edition 106-11 --edition 106-13 --edition 106-15 --chapter 10 --kind chapter
 python3 scripts/fetch.py --edition 106-17 --edition 106-19 --edition 106-20 --edition 106-22 --edition 106-23 --edition 106-24 --edition 106-24R1 --chapter 11 --kind chapter
 pdftoppm -f 18 -l 18 -scale-to 1600 -png -singlefile files/106-24R1/chapter11.pdf figure-11-4
@@ -179,6 +180,7 @@ each edition as well. Images/PDFs remain external to this Git repository.
 
 | Edition | Printed page / PDF page (1-based) | Evidence inspected |
 |---|---|---|
+| 106-04 | 10-19–21 / 277–279 (full PDF) | §10.6.1.1.7: bits 3–2 = 00 select Chapter 4 secondary time, bit 6 selects it for IPTS; §10.6.1.2.1 and §10.6.1.3.2 refer to those flags. No layout figure. |
 | 106-05 | 10-25 / 29 | §10.6.1.2 a, §10.6.1.3 b: secondary and IPTS times selected by packet flags; no dedicated Chapter 4 secondary-time layout figure in this edition. |
 | 106-07 | 10-36 / 40 | Same sections and linkage; no dedicated Chapter 4 secondary-time layout figure. |
 | 106-09 | 10-34 / 44 | Same sections and linkage; no dedicated Chapter 4 secondary-time layout figure. |
@@ -186,7 +188,19 @@ each edition as well. Images/PDFs remain external to this Git repository.
 | 106-13 | 10-33 / 45 | Figure 10-12: same layout. |
 | 106-15 | 10-30 / 42 | Figure 10-12: same layout. |
 | 106-17, 106-19, 106-20, 106-22, 106-23, 106-24, 106-24R1 | 11-10 / 18 in each | Figure 11-4: same layout. |
+| 106-04 Chapter 4 | 4-8–9 / 63–64 (full PDF) | §4.7.4 states 655.36 s; Figure 4-3 draws two low-word zeros and no microsecond-word zeros. |
+| 106-05 Chapter 4 | 4-8–9 / 10–11 | Same §4.7.4 wording and Figure 4-3 zero placement as 106-04. |
+| 106-07, 106-09, 106-11 Chapter 4 | 4-9 / 11 in each | Figure 4-3 matches the later pattern: one low-word zero, two microsecond-word zeros. |
+| 106-13, 106-15 Chapter 4 | 4-9 / 13 in each | Figure 4-3: same later pattern. |
+| 106-17, 106-19, 106-20, 106-22, 106-23, 106-24 Chapter 4 | 4-10 / 14 in each | Figure 4-4: same later pattern. |
 | 106-24R1 Chapter 4 | 4-10 / 14 and 4-11 / 15 | §4.7, Figures 4-4 and 4-5: binary weighting, microsecond leading zeros, PCM insertion distinct from packet storage. |
+
+For **106-04 through 106-09**, the packet word order used here is **inferred
+from the 106-11-and-later layout figure**, not explicitly drawn in those
+older editions. Their Chapter 4 packet-flag descriptions only specify that
+the two LSBs of the 64-bit secondary/IPTS time are zero-filled; that wording
+does not establish the four-word order. The shared flag selection alone is
+not independent evidence of that order.
 
 Figure 11-4 labels the first 32-bit row's high half **Micro-Seconds Word**
 and low half **Reserved**; the second row's high half **High Order Time
@@ -203,7 +217,9 @@ significant byte first. Thus the byte intervals are:
 For IPTS, §11.2.1.1 g bit 6 chooses RTC or secondary-header time; bits 3–2
 select Chapter 4 for the latter. Section 11.2.1.3 b specifies the flag-selected
 8-byte timestamp. The same correspondence is in the checked earlier editions
-(Chapter 10 §10.6.1.1 g / §10.6.1.3 b before 106-17).
+(Chapter 10 §10.6.1.1 g / §10.6.1.3 b in 106-05 through 106-15;
+§10.6.1.1.7 / §10.6.1.3.2 in 106-04). This establishes format selection;
+the pre-106-11 byte order remains the inference stated above.
 
 ### Binary weighting and figure caveat
 
@@ -213,11 +229,22 @@ Chapter 4 §4.7 explicitly says the high word's “lsb, bit 16, has a value of
 There is no day-of-year partition or 17-bit-only counter in this binary
 representation. `low = 0x8000`, `high = 0` means 32768 × 0.01 = 327.68 s.
 
-Figures 4-4/4-5 show a zero in the low word's leading position alongside
-BCD/binary annotations. Applying that drawn zero as a binary mask would
+The page images differ by edition. **106-04 and 106-05 Figure 4-3**
+(printed 4-9; full-PDF page 64 and chapter-PDF page 11 respectively) draw
+**two** zeros on the low word and **none** on the microsecond word. Their
+Figure 4-4 on the same page already draws two microsecond zeros. From
+**106-07 onward**, the standardized 16-bit figure matches 106-24R1:
+one low-word zero and two microsecond-word zeros (Figure 4-3 through
+106-15, Figure 4-4 from 106-17). These are observed drawing differences,
+not a change to the binary weighting used here: 106-04 and 106-05 §4.7.4
+also state the high-word resolution as 655.36 seconds (printed 4-8).
+The no-mask decision therefore stands for those editions too.
+
+In the 106-24R1 baseline, Figures 4-4/4-5 show a zero in the low word's
+leading position alongside BCD/binary annotations. Applying that drawn zero as a binary mask would
 contradict the explicit 655.36-second high-word weighting; it is not forced
 to zero by this implementation. This preserves every high/low bit as requested.
-The microsecond word separately shows **two** leading zero positions;
+The baseline microsecond word separately shows **two** leading zero positions;
 §4.7 defines 1 µs resolution, resetting at 10 ms, maximum 9999.
 
 Chapter 4's PCM insertion order (high, low, microseconds, with zero filler
