@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
+0.1.0 is the planned first real release and remains unpublished; crates.io
+currently has only the 0.0.1 placeholder. Releases use crates.io Trusted
+Publishing (OIDC) from the environment-approved GitHub Actions workflow,
+never a stored registry token or local publication.
 
 ### Fixed
 
@@ -19,6 +22,8 @@ Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
 
 ### Added
 
+- Tag-only release workflow with full verification, package dry run, and environment-approved crates.io Trusted Publishing; owner setup and release procedure in `docs/RELEASING.md`.
+- Explicit README metadata and package allowlist retaining source, tests, LICENSE, README, and CHANGELOG while excluding CI and repository-only documentation.
 - T-7: `IrigTimeSource` and `from_raw` for ITS values 0–7 and reserved values, with edition/format applicability documented.
 - T-9: `version::Irig106Version`, re-exported at the crate root, with separate `from_setup_record` and `from_data_type_version` mappings. Reserved codes, including 0x0F and setup-record zero, remain `Unknown(raw)`; no invented 106-23 code.
 - Standard-derived regression tests and a review/adoption record in `docs/STANDARD-VALUES-REVIEW.md`.
@@ -27,7 +32,7 @@ Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
 
 - Edition 2024 and MSRV 1.85, the same across the IRIG 106 ecosystem (owner, 2026-09-27); CI checks 1.85. Formatting follows the 2024 style edition.
 
-## [0.1.0] - 2026-09-24
+## [0.1.0] - Unreleased
 
 ### Added
 
@@ -36,4 +41,4 @@ Version remains 0.1.0 (unpublished); crates.io 0.0.1 is the placeholder.
 - `TimeSource`, `TimeFormat`, `DateFormat`, `SecHdrTimeFormat` enums, migrated from `irig106-time`.
 - Unit/epoch newtypes: `UnixSeconds`, `TaiSeconds` (with `to_unix`), `TaiUtcOffset`, `NanosDuration`.
 - `TypesError` with `BufferTooShort` and `OutOfRange` variants.
-- `no_std` support, optional `std` and `serde` features. MSRV 1.60.
+- `no_std` support, optional `std` and `serde` features. MSRV 1.85.

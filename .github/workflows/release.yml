@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag and main ancestry
+        id: release
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          if os.environ['GITHUB_EVENT_NAME'] != 'push' or os.environ['GITHUB_REF_TYPE'] != 'tag':
+              raise SystemExit('Releases require a tag push')
+          version = tomllib.loads(Path('Cargo.toml').read_text())['package']['version']
+          if os.environ['GITHUB_REF_NAME'] != f'v{version}':
+              raise SystemExit(f'Tag must equal Cargo.toml version: v{version}')
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          event_commit = subprocess.check_output(
+              ['git', 'rev-parse', os.environ['GITHUB_SHA'] + '^{commit}'], text=True
+          ).strip()
+          if commit != event_commit:
+              raise SystemExit('Checkout must match the triggering tag commit')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write(f'commit={commit}\n')
+          print(f'Verified {os.environ["GITHUB_REF_NAME"]} at {commit} on main')
+          PY
+      - name: Install Rust toolchains
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+          rustup toolchain install 1.85.0 --profile minimal
+      - name: Tests
+        run: |
+          cargo +stable test --locked --all-features
+          cargo +stable test --locked --no-default-features
+          cargo +stable test --locked --features serde
+      - name: MSRV (1.85.0)
+        run: |
+          cargo +1.85.0 check --locked --no-default-features
+          cargo +1.85.0 check --locked
+          cargo +1.85.0 check --locked --features serde
+      - name: Clippy
+        run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
+      - name: Format
+        run: cargo +stable fmt --all -- --check
+      - name: Documentation
+        run: cargo +stable doc --locked --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: WASM
+        run: cargo +stable build --locked --target wasm32-unknown-unknown --no-default-features
+      - name: Package contents
+        run: cargo +stable package --locked --list
+      - name: Publish dry run (no credentials)
+        run: cargo +stable publish --locked --registry crates-io --dry-run
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: crates-io
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Obtain short-lived crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6 (v1)
+      - name: Publish to crates.io
+        run: cargo +stable publish --locked --registry crates-io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
