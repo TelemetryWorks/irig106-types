@@ -36,6 +36,23 @@ These are owner actions, not actions performed by the preparation PR.
    The owner must configure it first. Do not substitute a stored token if
    Trusted Publishing fails.
 
+### Recommended release-tag ruleset (owner setup)
+
+In **GitHub → Settings → Rules → Rulesets → New tag ruleset**, create an
+**Active** ruleset targeting tag names **`v*`**. Enable **Restrict creations**,
+**Restrict updates**, and **Restrict deletions**. Grant bypass permission
+only to the owner: in this organization repository, use a dedicated team
+whose sole member is the owner. Do not grant bypass to broad roles such as
+all repository administrators, other teams, or GitHub Apps. With these rules,
+only the owner can create, update, or delete matching tags. Restrict access
+to edit the ruleset itself as well; verify its effective bypass list.
+
+This is a recommended owner configuration, not a settings change performed
+by a release-preparation PR. The owner must still follow the policy against
+moving or deleting release tags. The environment's `v*` deployment rule
+controls deployment eligibility, not who can push tags; it does not replace
+this ruleset. See [GitHub tag rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository).
+
 See [crates.io Trusted Publishing](https://crates.io/docs/trusted-publishing)
 and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 
@@ -43,8 +60,10 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
 
 1. Open a version-bump/release-preparation PR updating `Cargo.toml`,
    `Cargo.lock` if necessary, README, and CHANGELOG. For the first release,
-   keep **0.1.0**, since it has not been published. Replace the planned
-   changelog date with the intended release date in that PR. Review the
+   keep **0.1.0**, since it has not been published. Consolidate `[Unreleased]`
+   into the version's changelog entry and set its date **in the release-prep
+   PR**. For 0.1.0, use **2026-11-13**; if this PR merges on a later date,
+   update the date before merge and re-review the change. Review the
    package list and run the [development checks](../README.md#development-checks),
    `cargo package --locked --list`, and
    `cargo publish --locked --registry crates-io --dry-run`.
@@ -75,10 +94,11 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    docs with warnings denied, wasm32, package listing, and publish dry run.
    This job has only `contents: read`, with no OIDC permission or registry token.
 5. When `verify` succeeds, the `publish` job waits for the owner's
-   **`crates-io` environment approval**. Inspect the exact tag, verified
-   commit, logs, and package contents before approving. The job checks out
-   the verified commit SHA, not a mutable main/tag reference. Main ancestry
-   is checked against the main snapshot fetched during verification.
+   **`crates-io` environment approval**. Follow the independent approver
+   checklist below; a green `verify` job alone is insufficient. Inspect the
+   exact tag, commit, logs, and package contents. The job checks out the
+   verified commit SHA, not a mutable main/tag reference. Main ancestry in
+   the job is checked against the snapshot fetched during verification.
 6. After approval, the publish job obtains a short-lived token with
    `rust-lang/crates-io-auth-action` (full-SHA pin for v1.0.6). Only that job
    has `id-token: write` and `contents: read`. Only its publish step receives
@@ -92,6 +112,41 @@ manual dispatch or branch/PR publish path. All third-party actions are pinned
 to full commit SHAs. Rust toolchains are installed with the runner's `rustup`.
 The `crates-io` environment and publisher configuration are owner prerequisites,
 not resources created/configured by this workflow.
+
+## Approver checklist before crates-io deployment
+
+Before approving the pending deployment, the owner must independently:
+
+- Get the run's actual commit SHA and tag from the GitHub Actions run page,
+  not only the `verify` job's output. Confirm the annotated release tag
+  points to that commit and the version matches the reviewed release PR.
+- Fetch current main in a trusted checkout and confirm the run's commit is
+  on main. Do not rely on the ancestry assertion in the tag's workflow.
+- Identify the reviewed `release.yml` on main by its immutable commit SHA
+  (for example, the independently reviewed merge commit). Confirm that the
+  run commit's `.github/workflows/release.yml` is **byte-identical** to that
+  reviewed file. Do not trust a tag's altered workflow to verify itself.
+- Inspect verification results and package contents. If ancestry or workflow
+  identity differs, **do not approve**, even if `verify` is green. Resolve
+  the difference through independent review first; do not bypass protection.
+
+Example independent checks (replace both placeholder SHAs using the run page
+and reviewed main history; do not take them from untrusted workflow output):
+
+```sh
+set -eu
+release_commit=REPLACE_WITH_RUN_COMMIT_SHA
+reviewed_main_commit=REPLACE_WITH_REVIEWED_MAIN_COMMIT_SHA
+git fetch origin main
+git merge-base --is-ancestor "$release_commit" origin/main
+git merge-base --is-ancestor "$reviewed_main_commit" origin/main
+release_workflow_blob=$(git rev-parse "$release_commit:.github/workflows/release.yml")
+reviewed_workflow_blob=$(git rev-parse "$reviewed_main_commit:.github/workflows/release.yml")
+test "$release_workflow_blob" = "$reviewed_workflow_blob"
+```
+
+Matching Git blob IDs establish identical file bytes. These checks complement
+the environment approval and tag ruleset; they are not delegated to `verify`.
 
 ## Verify the published crate
 
