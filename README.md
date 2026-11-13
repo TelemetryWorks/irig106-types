@@ -80,9 +80,13 @@ retains CSDW parsing, reserved-bit validation (31–16 and 11–10; 31–12 befo
 ITS), payload validity enforcement, and edition-dependent EXT/SRC, FMT, and ITS
 interpretation. 106-04 uses packet data type version `0x01` (Initial Release);
 that header field was called Header Version in 106-04 §10.6.1.1.5.
-See [standard evidence, API changes, and adoption steps](docs/STANDARD-VALUES-REVIEW.md).
+See [standard evidence, API changes, and adoption steps](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/STANDARD-VALUES-REVIEW.md).
 
-Version remains **0.1.0**, not yet published; crates.io's 0.0.1 is a placeholder.
+**0.1.0 is the planned first real release**; it is not yet published.
+Crates.io currently has only the 0.0.1 placeholder. Releases use GitHub
+Actions and crates.io Trusted Publishing (OIDC), with owner approval through
+the `crates-io` environment. Never store a registry token or publish locally.
+See the [release procedure](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
 
 ## Chapter 4 binary time layout
 
@@ -106,7 +110,7 @@ workaround for the old word order, and replace 17-bit/day-of-year or 15-bit
 low-word interpretations with the full binary count. Update hand-written
 secondary-header and IPTS fixtures; PCM stream word insertion (Chapter 4)
 is distinct from this Chapter 11 byte layout. No public signatures changed.
-See the [page-image evidence and failing-test record](docs/STANDARD-VALUES-REVIEW.md#chapter-4-binary-time-layout-t-10).
+See the [page-image evidence and failing-test record](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/STANDARD-VALUES-REVIEW.md#chapter-4-binary-time-layout-t-10).
 
 ## Development checks
 
