@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-11-13
 
-0.1.0 is the planned first real release and remains unpublished; crates.io
-currently has only the 0.0.1 placeholder. Releases use crates.io Trusted
-Publishing (OIDC) from the environment-approved GitHub Actions workflow,
+0.1.0 is the first real release; 0.0.1 was a name placeholder. Releases are
+published only through crates.io Trusted Publishing (OIDC) from the
+environment-approved GitHub Actions workflow,
 never a stored registry token or local publication.
 
 ### Fixed

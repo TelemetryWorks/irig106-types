@@ -82,9 +82,9 @@ interpretation. 106-04 uses packet data type version `0x01` (Initial Release);
 that header field was called Header Version in 106-04 §10.6.1.1.5.
 See [standard evidence, API changes, and adoption steps](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/STANDARD-VALUES-REVIEW.md).
 
-**0.1.0 is the planned first real release**; it is not yet published.
-Crates.io currently has only the 0.0.1 placeholder. Releases use GitHub
-Actions and crates.io Trusted Publishing (OIDC), with owner approval through
+**0.1.0 is the first real release**; 0.0.1 was a name placeholder.
+Releases are published only through GitHub Actions and crates.io Trusted
+Publishing (OIDC), with owner approval through
 the `crates-io` environment. Never store a registry token or publish locally.
 See the [release procedure](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
 
