@@ -48,6 +48,10 @@ newtype!(
     /// Seconds since the TAI epoch used by IEEE-1588/PTP
     /// (1970-01-01T00:00:00 TAI).
     ///
+    /// IRIG 106-24R1 Chapter 11 §11.2.3.3 (printed page 11-26):
+    /// "The PTP is referenced in International Atomic Time with an epoch
+    /// of January 1, 1970."
+    ///
     /// This is the PTP epoch, not the 1958 TAI epoch. Convert using a
     /// caller-supplied [`TaiUtcOffset`]; this crate does not choose an offset
     /// or resolve historical UTC/leap-second policy.

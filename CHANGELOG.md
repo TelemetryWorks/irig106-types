@@ -39,7 +39,7 @@ never a stored registry token or local publication.
 
 ### Changed
 
-- Breaking: `TaiSeconds::to_unix` now returns `Option<UnixSeconds>` and rejects negative/out-of-`u64` results instead of saturating. No saturating compatibility API is retained.
-- Breaking: `NanosDuration::from_secs`, `from_millis`, and `from_micros` now return `Option<NanosDuration>` on scaling overflow rather than clamp. `new`/`get` and the explicitly truncating `as_rtc_ticks` are unchanged. Consumers must handle `None`; `irig106-time` can replace its local signed wrappers with the shared definitions.
+- Changed since pre-release Git revision `48f1834` (used by `irig106-time`): `TaiSeconds::to_unix` returns `Option<UnixSeconds>` and rejects negative/out-of-`u64` results instead of saturating. No saturating compatibility API is retained.
+- Changed since pre-release Git revision `48f1834` (used by `irig106-time`): `NanosDuration::from_secs`, `from_millis`, and `from_micros` return `Option<NanosDuration>`, rejecting scaling overflow with `None` rather than clamping. `new`/`get` and the explicitly truncating `as_rtc_ticks` are unchanged. Git consumers must handle `None`; `irig106-time` can replace its local signed wrappers with the shared definitions.
 
 - Edition 2024 and MSRV 1.85, the same across the IRIG 106 ecosystem (owner, 2026-09-27); CI checks 1.85. Formatting follows the 2024 style edition.
