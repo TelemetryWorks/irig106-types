@@ -17,7 +17,7 @@
 //! | [`rtc`] | [`Rtc`] (48-bit RTC), [`Ertc`] (64-bit extended RTC) |
 //! | [`binary_time`] | [`Ch4BinaryTime`], [`Ieee1588Time`] |
 //! | [`time_enums`] | [`TimeSource`], [`TimeFormat`], [`IrigTimeSource`], [`DateFormat`], [`SecHdrTimeFormat`] |
-//! | [`units`] | [`UnixSeconds`], [`TaiSeconds`], [`TaiUtcOffset`], [`NanosDuration`] |
+//! | [`units`] | [`UnixSeconds`], [`TaiSeconds`], [`TaiUtcOffset`], [`NanosDuration`], [`SignedUnixSeconds`], [`SignedNanos`], [`SignedRtcTicks`] |
 //! | [`version`] | [`Irig106Version`] (separate setup/header code mappings) |
 //! | [`error`] | [`TypesError`] |
 //!
@@ -37,9 +37,9 @@
 //!
 //! let start = Rtc::from_le_bytes([0x80, 0x96, 0x98, 0x00, 0x00, 0x00]);
 //! let end = Rtc::from_raw(start.as_raw() + 5_000_000);
-//! assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).get());
+//! assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).unwrap().get());
 //!
-//! let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37));
+//! let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37)).unwrap();
 //! assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
 //! ```
 
@@ -60,5 +60,8 @@ pub use binary_time::{Ch4BinaryTime, Ieee1588Time};
 pub use error::{Result, TypesError};
 pub use rtc::{Ertc, Rtc};
 pub use time_enums::{DateFormat, IrigTimeSource, SecHdrTimeFormat, TimeFormat, TimeSource};
-pub use units::{NanosDuration, TaiSeconds, TaiUtcOffset, UnixSeconds};
+pub use units::{
+    NanosDuration, SignedNanos, SignedRtcTicks, SignedUnixSeconds, TaiSeconds, TaiUtcOffset,
+    UnixSeconds,
+};
 pub use version::Irig106Version;

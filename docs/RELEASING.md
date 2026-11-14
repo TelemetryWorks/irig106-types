@@ -62,7 +62,7 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    `Cargo.lock` if necessary, README, and CHANGELOG. For the first release,
    keep **0.1.0**, since it has not been published. Consolidate `[Unreleased]`
    into the version's changelog entry and set its date **in the release-prep
-   PR**. For 0.1.0, use **2026-11-13**; if this PR merges on a later date,
+   PR**. For 0.1.0, use **2026-11-14**; if this PR merges on a later date,
    update the date before merge and re-review the change. Review the
    package list and run the [development checks](../README.md#development-checks),
    `cargo package --locked --list`, and

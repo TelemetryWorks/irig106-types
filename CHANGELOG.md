@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-11-13
+## [0.1.0] - 2026-11-14
 
 0.1.0 is the first real release; 0.0.1 was a name placeholder. Releases are
 published only through crates.io Trusted Publishing (OIDC) from the
@@ -22,6 +22,9 @@ never a stored registry token or local publication.
 
 ### Added
 
+- Shared transparent `i128` quantities `SignedNanos`, `SignedRtcTicks`, and `SignedUnixSeconds`, exported from `units` and the crate root, with optional serde. Signed ticks convert to nanoseconds with checked multiplication; signed duration magnitude/unsigned conversion and signed Unix unsigned conversion reject out-of-range results. Unsigned Unix seconds and durations widen exactly with `to_signed`.
+- `TaiSeconds::to_signed_unix` retains exact signed results using widened arithmetic and a caller-supplied offset. The TAI epoch remains PTP 1970, not 1958; no historical offset is inferred.
+
 - Tag-only release workflow with full verification, package dry run, and environment-approved crates.io Trusted Publishing; owner setup and release procedure in `docs/RELEASING.md`.
 - Explicit README metadata and package allowlist retaining source, tests, LICENSE, README, and CHANGELOG while excluding CI and repository-only documentation.
 - T-7: `IrigTimeSource` and `from_raw` for ITS values 0–7 and reserved values, with edition/format applicability documented.
@@ -35,5 +38,8 @@ never a stored registry token or local publication.
 - `no_std` support, optional `std` and `serde` features. MSRV 1.85.
 
 ### Changed
+
+- Breaking: `TaiSeconds::to_unix` now returns `Option<UnixSeconds>` and rejects negative/out-of-`u64` results instead of saturating. No saturating compatibility API is retained.
+- Breaking: `NanosDuration::from_secs`, `from_millis`, and `from_micros` now return `Option<NanosDuration>` on scaling overflow rather than clamp. `new`/`get` and the explicitly truncating `as_rtc_ticks` are unchanged. Consumers must handle `None`; `irig106-time` can replace its local signed wrappers with the shared definitions.
 
 - Edition 2024 and MSRV 1.85, the same across the IRIG 106 ecosystem (owner, 2026-09-27); CI checks 1.85. Formatting follows the 2024 style edition.
