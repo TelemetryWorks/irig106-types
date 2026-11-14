@@ -54,7 +54,14 @@ For example, 1900-01-01 has offset -2,208,988,800 seconds; 1958-01-01 has
 offset -378,691,200 seconds. Those are Gregorian Unix offsets, not TAI/UTC
 conversions. `TaiSeconds` uses the **1970 PTP TAI epoch**, not 1958.
 `TaiSeconds::to_signed_unix(offset)` subtracts the caller's signed offset
-exactly after widening to `i128`; it does not infer historical offsets.
+exactly as integer arithmetic after widening to `i128`. Historical conversion
+through either `to_signed_unix` or `to_unix` is exact only with the correct
+whole-second TAI − UTC offset, as used from **1972-01-01 onward**. Before
+1972 the offset was fractional and cannot be represented by the caller's
+whole-second `TaiUtcOffset`. Neither method validates historical offsets;
+`Some` from `to_unix` confirms range only. Signed Unix representation of
+pre-1970 dates does not remove this historical conversion limitation.
+See the [IERS TAI/UTC history](https://hpiers.obspm.fr/iers/bul/bulc/UTC-TAI.history).
 
 `TaiSeconds::to_unix` returns `Option<UnixSeconds>` rather than saturating.
 Likewise, `NanosDuration::from_secs`, `from_millis`, and `from_micros` return
@@ -69,6 +76,7 @@ use irig106_types::{SignedNanos, SignedRtcTicks, SignedUnixSeconds, TaiSeconds, 
 assert_eq!(SignedRtcTicks::new(-150_000).to_nanos(), Some(SignedNanos::new(-15_000_000)));
 assert_eq!(SignedNanos::new(-1).to_unsigned(), None);
 assert_eq!(SignedUnixSeconds::new(-1).to_unsigned(), None);
+// Integer arithmetic/range examples only: 37 s is not a historical 1970 offset.
 assert_eq!(TaiSeconds::new(36).to_unix(TaiUtcOffset::new(37)), None);
 assert_eq!(TaiSeconds::new(36).to_signed_unix(TaiUtcOffset::new(37)).get(), -1);
 ```
