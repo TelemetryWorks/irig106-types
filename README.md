@@ -75,7 +75,8 @@ assert_eq!(TaiSeconds::new(36).to_signed_unix(TaiUtcOffset::new(37)).get(), -1);
 
 For `irig106-time` adoption, advance its types dependency after review/merge,
 replace the local `rtc::SignedNanos`/`SignedRtcTicks` definitions with shared
-re-exports, and map `None` to its typed quantity-overflow error. Handle the
+re-exports, replace tuple-constructor calls with `::new`, and map `None` to
+its typed quantity-overflow error. Handle the
 new `Option` results from unsigned constructors and `to_unix`; use signed
 Unix seconds when a pre-1970 result is valid. Keep session/wrap selection,
 calendar conversion, leap-second policy, and reporting in `irig106-time`.
