@@ -19,7 +19,7 @@ no parsing of whole packets, no correlation.
 | `rtc` | `Rtc`, `Ertc` | 48-bit RTC (masked, wrap-aware elapsed time) at 100 ns/tick; 64-bit ERTC at 1 ns/tick |
 | `binary_time` | `Ch4BinaryTime`, `Ieee1588Time` | Raw secondary-header / intra-packet time fields |
 | `time_enums` | `TimeSource`, `TimeFormat`, `IrigTimeSource`, `DateFormat`, `SecHdrTimeFormat` | Decoded CSDW / packet-flag fields |
-| `units` | `UnixSeconds`, `TaiSeconds`, `TaiUtcOffset`, `NanosDuration` | `#[repr(transparent)]` newtypes that prevent unit and epoch mix-ups |
+| `units` | `UnixSeconds`, `TaiSeconds`, `TaiUtcOffset`, `NanosDuration`, `SignedUnixSeconds`, `SignedNanos`, `SignedRtcTicks` | `#[repr(transparent)]` newtypes that prevent unit and epoch mix-ups |
 | `version` | `Irig106Version` | Separate setup-record RCCVER and packet-header data type version mappings |
 | `error` | `TypesError` | `BufferTooShort`, `OutOfRange` |
 
@@ -34,11 +34,54 @@ use irig106_types::{NanosDuration, Rtc, TaiSeconds, TaiUtcOffset};
 
 let start = Rtc::from_le_bytes([0x80, 0x96, 0x98, 0x00, 0x00, 0x00]);
 let end = Rtc::from_raw(start.as_raw() + 5_000_000);
-assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).get());
+assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).unwrap().get());
 
-let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37));
+let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37)).unwrap();
 assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
 ```
+
+## Signed quantities and checked conversions
+
+`SignedNanos(i128)` is a duration with no epoch; `SignedRtcTicks(i128)` is an
+unwrapped displacement at 100 ns/tick. Their `new`/`get` methods match the
+shapes needed by `irig106-time`. `SignedRtcTicks::to_nanos` uses checked
+multiplication and returns `Option<SignedNanos>`. `SignedNanos::to_unsigned`
+rejects negative values or values above `u64::MAX`; `magnitude` explicitly
+removes the sign, also returning `None` if the magnitude cannot fit.
+
+`SignedUnixSeconds(i128)` represents dates before and after the Unix epoch.
+For example, 1900-01-01 has offset -2,208,988,800 seconds; 1958-01-01 has
+offset -378,691,200 seconds. Those are Gregorian Unix offsets, not TAI/UTC
+conversions. `TaiSeconds` uses the **1970 PTP TAI epoch**, not 1958.
+`TaiSeconds::to_signed_unix(offset)` subtracts the caller's signed offset
+exactly after widening to `i128`; it does not infer historical offsets.
+
+`TaiSeconds::to_unix` returns `Option<UnixSeconds>` rather than saturating.
+Likewise, `NanosDuration::from_secs`, `from_millis`, and `from_micros` return
+`Option<NanosDuration>` on scaled overflow. `UnixSeconds::to_signed` and
+`NanosDuration::to_signed` widen exactly; `SignedUnixSeconds::to_unsigned`
+checks sign and range. Existing `NanosDuration::as_rtc_ticks` remains an
+explicitly documented truncation to whole ticks, not an exact inverse.
+
+```rust
+use irig106_types::{SignedNanos, SignedRtcTicks, SignedUnixSeconds, TaiSeconds, TaiUtcOffset};
+
+assert_eq!(SignedRtcTicks::new(-150_000).to_nanos(), Some(SignedNanos::new(-15_000_000)));
+assert_eq!(SignedNanos::new(-1).to_unsigned(), None);
+assert_eq!(SignedUnixSeconds::new(-1).to_unsigned(), None);
+assert_eq!(TaiSeconds::new(36).to_unix(TaiUtcOffset::new(37)), None);
+assert_eq!(TaiSeconds::new(36).to_signed_unix(TaiUtcOffset::new(37)).get(), -1);
+```
+
+For `irig106-time` adoption, advance its types dependency after review/merge,
+replace the local `rtc::SignedNanos`/`SignedRtcTicks` definitions with shared
+re-exports, replace tuple-constructor calls with `::new`, and map `None` to
+its typed quantity-overflow error. Handle the
+new `Option` results from unsigned constructors and `to_unix`; use signed
+Unix seconds when a pre-1970 result is valid. Keep session/wrap selection,
+calendar conversion, leap-second policy, and reporting in `irig106-time`.
+The new wrappers are transparent, `no_std`, and support optional serde;
+existing unsigned wrappers retain their representation and serde shape.
 
 ## Features
 
