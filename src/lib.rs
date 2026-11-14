@@ -1,8 +1,8 @@
 //! # irig106-types
 //!
-//! Foundational, dependency-free types shared across the TelemetryWorks
-//! IRIG 106 crate ecosystem (`irig106-core`, `irig106-time`,
-//! `irig106-decode`, `irig106-write`, `irig106-ch10-reader`).
+//! Foundational, dependency-free types intended as the shared vocabulary of
+//! the TelemetryWorks IRIG 106 crate ecosystem; currently used by
+//! `irig106-time`.
 //!
 //! This crate holds only the *vocabulary* of IRIG 106: counters, wire-level
 //! time representations, time-related enumerations, and unit/epoch newtypes.
@@ -26,7 +26,7 @@
 //! | Feature | Default | Effect |
 //! |---------|---------|--------|
 //! | `std` | yes | Implements `std::error::Error` for [`TypesError`] |
-//! | `serde` | no | `Serialize`/`Deserialize` on all public data types |
+//! | `serde` | no | `Serialize`/`Deserialize` on all public value types, excluding [`TypesError`] |
 //!
 //! The crate is `#![no_std]` and requires neither `std` nor `alloc`.
 //!

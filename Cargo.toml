@@ -12,6 +12,9 @@ include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "LICENSE", "README.
 categories = ["aerospace", "no-std", "data-structures"]
 keywords = ["irig106", "telemetry", "chapter10", "flight-test", "types"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["std"]
 std = []

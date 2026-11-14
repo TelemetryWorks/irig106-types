@@ -24,7 +24,6 @@ never a stored registry token or local publication.
 
 - Shared transparent `i128` quantities `SignedNanos`, `SignedRtcTicks`, and `SignedUnixSeconds`, exported from `units` and the crate root, with optional serde. Signed ticks convert to nanoseconds with checked multiplication; signed duration magnitude/unsigned conversion and signed Unix unsigned conversion reject out-of-range results. Unsigned Unix seconds and durations widen exactly with `to_signed`.
 - `TaiSeconds::to_signed_unix` retains exact signed results using widened arithmetic and a caller-supplied offset. The TAI epoch remains PTP 1970, not 1958; no historical offset is inferred.
-
 - Tag-only release workflow with full verification, package dry run, and environment-approved crates.io Trusted Publishing; owner setup and release procedure in `docs/RELEASING.md`.
 - Explicit README metadata and package allowlist retaining source, tests, LICENSE, README, and CHANGELOG while excluding CI and repository-only documentation.
 - T-7: `IrigTimeSource` and `from_raw` for ITS values 0–7 and reserved values, with edition/format applicability documented.
@@ -41,5 +40,6 @@ never a stored registry token or local publication.
 
 - Changed since pre-release Git revision `48f1834` (used by `irig106-time`): `TaiSeconds::to_unix` returns `Option<UnixSeconds>` and rejects negative/out-of-`u64` results instead of saturating. No saturating compatibility API is retained.
 - Changed since pre-release Git revision `48f1834` (used by `irig106-time`): `NanosDuration::from_secs`, `from_millis`, and `from_micros` return `Option<NanosDuration>`, rejecting scaling overflow with `None` rather than clamping. `new`/`get` and the explicitly truncating `as_rtc_ticks` are unchanged. Git consumers must handle `None`; `irig106-time` can replace its local signed wrappers with the shared definitions.
-
 - Edition 2024 and MSRV 1.85, the same across the IRIG 106 ecosystem (owner, 2026-09-27); CI checks 1.85. Formatting follows the 2024 style edition.
+
+[0.1.0]: https://github.com/TelemetryWorks/irig106-types/releases/tag/v0.1.0

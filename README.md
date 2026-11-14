@@ -2,9 +2,9 @@
 
 Zero-cost abstractions and foundational types for IRIG 106 telemetry.
 
-`irig106-types` is the shared vocabulary of the TelemetryWorks IRIG 106 crate
-ecosystem (`irig106-core`, `irig106-time`, `irig106-decode`, `irig106-write`,
-`irig106-ch10-reader`). It defines counters, wire-level time representations,
+`irig106-types` is intended as the shared vocabulary of the TelemetryWorks
+IRIG 106 crate ecosystem; currently used by `irig106-time`. It defines
+counters, wire-level time representations,
 time-related enumerations, and unit/epoch newtypes, and nothing else: no I/O,
 no parsing of whole packets, no correlation.
 
@@ -96,7 +96,7 @@ existing unsigned wrappers retain their representation and serde shape.
 | Feature | Default | Effect |
 |---------|---------|--------|
 | `std` | yes | `impl std::error::Error for TypesError` |
-| `serde` | no | `Serialize`/`Deserialize` on all public data types (newtypes are `#[serde(transparent)]`) |
+| `serde` | no | `Serialize`/`Deserialize` on all public value types, excluding `TypesError` (newtypes are `#[serde(transparent)]`) |
 
 ## Standard values and adoption
 
