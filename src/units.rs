@@ -55,9 +55,11 @@ newtype!(
 );
 
 newtype!(
-    /// The TAI − UTC offset in seconds, i.e. accumulated leap seconds.
+    /// Caller-supplied TAI − UTC offset in whole seconds.
     ///
-    /// 37 seconds since 2017-01-01.
+    /// This models the integral offsets used from 1972-01-01 onward; earlier
+    /// fractional offsets cannot be represented. For example, the offset
+    /// at 2017-01-01 was 37 seconds.
     TaiUtcOffset(i32)
 );
 
@@ -155,7 +157,12 @@ impl TaiSeconds {
     ///
     /// Returns `None` if the result precedes 1970 or exceeds `u64::MAX`.
     /// No saturation, wrapping, or inferred offset is applied. Use
-    /// [`Self::to_signed_unix`] to retain an exact out-of-unsigned-range value.
+    /// [`Self::to_signed_unix`] to retain an exact integer result outside that range.
+    ///
+    /// Exact historical TAI/UTC conversion requires the correct whole-second
+    /// TAI − UTC offset, as used from 1972-01-01 onward. Before 1972 the offset
+    /// was fractional and cannot be represented by [`TaiUtcOffset`]. `Some`
+    /// confirms integer range only, not historical validity of the offset.
     #[inline]
     pub fn to_unix(self, offset: TaiUtcOffset) -> Option<UnixSeconds> {
         self.to_signed_unix(offset).to_unsigned()
@@ -164,9 +171,14 @@ impl TaiSeconds {
     /// Convert to signed Unix seconds by subtracting the caller's TAI − UTC offset.
     ///
     /// Both inputs are widened to `i128` before subtraction. Every `u64`
-    /// second count minus an `i32` offset fits in `i128`, so this conversion
-    /// is exact and infallible, including pre-1970 results and `i32::MIN`.
-    /// This does not convert the 1958 TAI epoch or choose a historical offset.
+    /// second count minus an `i32` offset fits in `i128`, so the integer
+    /// subtraction is exact and infallible, including negative results and
+    /// `i32::MIN`. This does not convert the 1958 TAI epoch or choose an offset.
+    ///
+    /// Exact historical TAI/UTC conversion requires the correct whole-second
+    /// TAI − UTC offset, as used from 1972-01-01 onward. Before 1972 the offset
+    /// was fractional; the caller-supplied whole-second [`TaiUtcOffset`]
+    /// cannot represent it. A signed result does not remove this limitation.
     #[inline]
     pub fn to_signed_unix(self, offset: TaiUtcOffset) -> SignedUnixSeconds {
         SignedUnixSeconds(i128::from(self.0) - i128::from(offset.0))
