@@ -146,16 +146,17 @@ Executed after this change:
   SBOM extraction only from successful verification output. Both enforce
   signer workflow, tag, commit, hosted runner, and predicate identity.
 
-### Auditor note (non-gating)
+### Initial auditor note (superseded for Scorecard below)
 
 `zizmor --offline --persona auditor` exits 13 with **15 findings**: six
 `superfluous-actions` (informational, the pinned Rust toolchain actions),
 three `concurrency-limits` (low, CI/Scorecard/zizmor), three
 `undocumented-permissions` (low, release/Scorecard), two `anonymous-definition`
 (informational, verify/publish job names), and one `excessive-permissions`
-(medium, the owner-required official Scorecard template's top-level `read-all`).
-Scorecard's job explicitly narrows its permissions; this workflow-level setting
-is intentional per the assignment/template. The other items are style/resource
+(medium, the initial pilot's top-level `read-all` in Scorecard).
+That broad default came from the example template, not a Scorecard requirement:
+Scorecard forbids workflow-level writes. The follow-up below replaces it
+with `contents: read`, preserving the necessary job-level write permissions. The other items are style/resource
 suggestions outside the regular persona; no high findings or repository
 suppressions were introduced. The gating regular audit remains clean.
 This note describes offline auditor checks, not an online auditor run.
@@ -192,3 +193,21 @@ publication/readiness/migration context; current publisher fields, links,
 approver comparisons, and verification policies use the new filename.
 Zizmor still audits the entire `.github/workflows` directory, including
 the renamed file. No publisher settings were changed by this assignment.
+
+## Scorecard permissions follow-up — 2026-11-15
+
+Aligned with the spatial-typestate rollout: Scorecard now defaults to
+workflow-level `contents: read`, retaining job-level `contents: read`,
+`security-events: write` for SARIF, and `id-token: write` for published
+results. The upstream [publishing restrictions](https://github.com/ossf/scorecard-action#workflow-restrictions)
+prohibit workflow-level writes; they do not require `read-all`.
+The job retains SHA pins, credential-free checkout, `publish_results: true`,
+weekly/main triggers and SARIF upload. Workflow concurrency serializes runs
+without cancelling an active scan; inline comments explain both write grants.
+
+Validation scope: actionlint checks all workflows; zizmor 1.32.0 regular
+and auditor personas check the changed `.github/workflows/scorecard.yml`
+without suppressions. Its initial three auditor findings (excessive default
+permissions, undocumented write grants, missing concurrency) are resolved.
+Other workflows' historical auditor suggestions are outside this focused
+Scorecard follow-up; this does not claim a clean repository-wide auditor run.
