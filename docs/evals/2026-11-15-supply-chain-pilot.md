@@ -159,3 +159,15 @@ is intentional per the assignment/template. The other items are style/resource
 suggestions outside the regular persona; no high findings or repository
 suppressions were introduced. The gating regular audit remains clean.
 This note describes offline auditor checks, not an online auditor run.
+
+## Organization-standard publishing workflow filename
+
+Owner decision (2026-11-15): renamed the workflow with `git mv` to
+`.github/workflows/trusted-publishing.yml`, preserving its history and
+`name: Release`. Updated the publisher field, independent approver blob
+comparisons, all attestation signer-workflow policies, README, CHANGELOG,
+and the earlier pilot record's current-path reference. The owner must update
+the crates.io Trusted Publisher before the next release; this PR performs
+no settings change. Trusted-publishing-only mode blocks authentication on a
+filename mismatch. Release job permissions, gates, and checkout pins remain
+unchanged by this rename.

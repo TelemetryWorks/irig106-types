@@ -142,7 +142,9 @@ See [standard evidence, API changes, and adoption steps](https://github.com/Tele
 **0.1.0 is the first real release**; 0.0.1 was a name placeholder.
 Releases are published only through GitHub Actions and crates.io Trusted
 Publishing (OIDC), with owner approval through
-the `crates-io` environment. Never store a registry token or publish locally.
+the `crates-io` environment. The organization-standard publishing workflow is
+[`.github/workflows/trusted-publishing.yml`](https://github.com/TelemetryWorks/irig106-types/blob/main/.github/workflows/trusted-publishing.yml).
+Never store a registry token or publish locally.
 See the [release procedure](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
 
 ## Chapter 4 binary time layout

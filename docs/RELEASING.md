@@ -7,6 +7,21 @@ real `cargo publish` locally. Local `cargo publish --dry-run` is allowed;
 it packages and verifies without uploading. Version 0.1.0 is the first real
 release; 0.0.1 was a name placeholder. Do not reuse an existing version.
 
+## Workflow filename migration (owner action before the next release)
+
+Owner org standard (2026-11-15): every TelemetryWorks publishing workflow
+uses **`.github/workflows/trusted-publishing.yml`**. The displayed Actions
+workflow name remains **Release**.
+
+Before the next irig106-types release, the owner must update its crates.io
+Trusted Publisher from **`release.yml`** to **`trusted-publishing.yml`**
+under **crates.io → irig106-types → Settings → Trusted Publishing**. Keep
+owner `TelemetryWorks`, repository `irig106-types`, and environment
+`crates-io`. This is an owner settings action, not performed by this PR.
+Trusted-publishing-only mode is enabled: a filename mismatch fails
+authentication and safely blocks publishing. Do not substitute a stored
+token or local publication to bypass it.
+
 ## One-time owner setup (before any release tag)
 
 These are owner actions, not actions performed by the preparation PR.
@@ -27,7 +42,7 @@ These are owner actions, not actions performed by the preparation PR.
    |---|---|
    | Owner | `TelemetryWorks` |
    | Repository | `irig106-types` |
-   | Workflow | `release.yml` |
+   | Workflow | `trusted-publishing.yml` |
    | Environment | `crates-io` |
 
 5. Check the saved publisher and environment rules before creating a tag.
@@ -138,9 +153,9 @@ Before approving the pending deployment, the owner must independently:
   points to that commit and the version matches the reviewed release PR.
 - Fetch current main in a trusted checkout and confirm the run's commit is
   on main. Do not rely on the ancestry assertion in the tag's workflow.
-- Identify the reviewed `release.yml` on main by its immutable commit SHA
+- Identify the reviewed `trusted-publishing.yml` on main by its immutable commit SHA
   (for example, the independently reviewed merge commit). Confirm that the
-  run commit's `.github/workflows/release.yml` is **byte-identical** to that
+  run commit's `.github/workflows/trusted-publishing.yml` is **byte-identical** to that
   reviewed file. Do not trust a tag's altered workflow to verify itself.
 - Inspect verification results and package contents. If ancestry or workflow
   identity differs, **do not approve**, even if `verify` is green. Resolve
@@ -156,8 +171,8 @@ reviewed_main_commit=REPLACE_WITH_REVIEWED_MAIN_COMMIT_SHA
 git fetch origin main
 git merge-base --is-ancestor "$release_commit" origin/main
 git merge-base --is-ancestor "$reviewed_main_commit" origin/main
-release_workflow_blob=$(git rev-parse "$release_commit:.github/workflows/release.yml")
-reviewed_workflow_blob=$(git rev-parse "$reviewed_main_commit:.github/workflows/release.yml")
+release_workflow_blob=$(git rev-parse "$release_commit:.github/workflows/trusted-publishing.yml")
+reviewed_workflow_blob=$(git rev-parse "$reviewed_main_commit:.github/workflows/trusted-publishing.yml")
 test "$release_workflow_blob" = "$reviewed_workflow_blob"
 ```
 
@@ -259,13 +274,13 @@ cmp "irig106-types-$version.crate" registry.crate
 gh attestation verify "irig106-types-$version.crate" \
   -R TelemetryWorks/irig106-types --bundle provenance.sigstore.json \
   --custom-trusted-root ../trusted_root.jsonl \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/trusted-publishing.yml \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
   --deny-self-hosted-runners
 gh attestation verify "irig106-types-$version.crate" \
   -R TelemetryWorks/irig106-types --bundle sbom.sigstore.json \
   --custom-trusted-root ../trusted_root.jsonl \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/trusted-publishing.yml \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
   --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom \
   --format json > verified-sbom.json
@@ -310,13 +325,13 @@ mkdir provenance-bundles sbom-bundles
 gh attestation verify "$crate" \
   -R TelemetryWorks/irig106-types --bundle provenance-bundles/*.jsonl \
   --custom-trusted-root trusted_root.jsonl \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/trusted-publishing.yml \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
   --deny-self-hosted-runners
 gh attestation verify "$crate" \
   -R TelemetryWorks/irig106-types --bundle sbom-bundles/*.jsonl \
   --custom-trusted-root trusted_root.jsonl \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/trusted-publishing.yml \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
   --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom \
   --format json > verified-sbom.json

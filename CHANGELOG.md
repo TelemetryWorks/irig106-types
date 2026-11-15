@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Weekly OpenSSF Scorecard publishing and SARIF, workflow security checks with zizmor, and repository/package badges.
 - Release-workflow SLSA provenance and a CycloneDX SBOM bound to the exact crates.io archive, with downloadable verification bundles and online/offline verification instructions. Every release retains the evidence as permanent GitHub Release assets via the separate environment-gated `release-assets` job, with retry-safe comparison of existing assets and both offline and durable online verification paths. These apply to future releases using the updated workflow; existing releases are not retroactively attested.
 
+### Changed
+
+- Standardized the publishing workflow filename to `.github/workflows/trusted-publishing.yml`; the owner must update the crates.io Trusted Publisher before the next release. Trusted-publishing-only mode safely blocks a filename mismatch.
+
 ## [0.1.0] - 2026-11-15
 
 0.1.0 is the first real release; 0.0.1 was a name placeholder. Releases are
