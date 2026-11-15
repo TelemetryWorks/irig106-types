@@ -13,7 +13,7 @@ or current documentation matched the selected versions. All passed.
 | --- | --- |
 | actions/attest-build-provenance (v4.2.2) | GitHub commit API resolved exact 40-character pin |
 | actions/attest-sbom (v4.1.0) | GitHub commit API resolved exact 40-character pin |
-| actions/checkout (v6.1.0) | GitHub commit API resolved exact 40-character pin |
+| actions/checkout (v7.0.1) | GitHub commit API resolved exact 40-character pin |
 | actions/download-artifact (v8.0.2) | GitHub commit API resolved exact 40-character pin |
 | actions/upload-artifact (v7.0.2) | GitHub commit API resolved exact 40-character pin |
 | dtolnay/rust-toolchain (master (stable)) | GitHub commit API resolved exact 40-character pin |
@@ -75,5 +75,34 @@ registry upload, and signing were not executed locally. They require their
 intended main/scheduled or approved tag events. Online/offline verification
 commands were checked against `gh attestation verify --help` and
 `gh attestation trusted-root --help`; no new signed bundle exists yet to verify.
-Release evidence is retained as Actions artifacts for 90 days, not permanent
-GitHub Release assets. No SLSA level or existing-release provenance is claimed.
+After the main-merge follow-up, Actions artifacts remain the 90-day transfer
+and fallback, and a separate `crates-io`-gated job retains the same five files
+as GitHub Release assets. Only that job has contents write; it has no OIDC
+permission, checkout step, or registry token. It creates a draft for an existing
+tag, uploads before publishing, and refuses to overwrite an existing Release.
+The checksum manifest now covers both bundles as well as the crate and SBOM.
+No SLSA level or existing-release provenance is claimed.
+
+## Main-merge and durable-evidence follow-up
+
+Merged origin/main 1eea6ea by ordinary two-parent merge. All ten checkout steps
+retain `persist-credentials: false` and pin v7.0.1 at
+`3d3c42e5aac5ba805825da76410c181273ba90b1`.
+
+The GitHub Release CLI contracts were checked against local `gh release create`,
+`edit`, and `download` help. A read-only Releases API query confirmed that this
+repository currently has no Releases. `--verify-tag` prevents implicit tag
+creation; draft creation plus successful asset uploads precedes publishing.
+Existing Releases/drafts fail closed and require owner-reviewed recovery.
+The durable job is proposed for review; no Release, draft, asset upload,
+environment approval, or settings change was performed during this assignment.
+
+Re-ran all 14 upstream API pin/input-output contract checks after the merge;
+all passed. Full CI equivalent, actionlint 1.7.12, and offline zizmor 1.32.0
+(default persona, no repository suppressions) passed again. The durable job's
+actual shell script passed six local cases with a mocked `gh`: success,
+checksum mismatch, missing bundle, existing Release, upload failure, and
+draft-publication failure. Negative cases exit before subsequent mutation
+steps; the success case supplies exactly five files and uses `--verify-tag`
+on both release commands. Mocked cases do not establish live GitHub behavior
+or simulate an environment approval; no mutation API was invoked.

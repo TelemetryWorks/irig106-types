@@ -111,7 +111,14 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    before creating provenance and SBOM attestations. A mismatch fails the
    release evidence steps; it cannot undo an upload already accepted by
    crates.io. Stop and investigate rather than retrying a different payload.
-7. Wait for the workflow to finish, then verify the result on crates.io as
+7. The separate `release-evidence` job then waits for the same protected
+   `crates-io` environment approval. Inspect the successful publish/attestation
+   results before approving. Only this job has `contents: write`, with no OIDC
+   permission or registry credentials. It downloads and checks the evidence,
+   creates a **draft GitHub Release for the existing tag** (`--verify-tag`),
+   uploads the assets, and publishes the Release after uploads succeed.
+   It does not change the tag or the repository's Latest release selection.
+8. Wait for the workflow to finish, then verify the result on crates.io as
    described below. Do not call a release complete merely because a tag exists.
 
 The workflow triggers **only** on tag pushes matching `v*.*.*`; it has no
@@ -204,25 +211,29 @@ After confirming the registry serves exactly that crate, the job creates
 and a [CycloneDX SBOM attestation](https://github.com/actions/attest-sbom)
 with the crate's SHA-256 as subject. Both are stored with GitHub and their
 Sigstore bundles are copied to the **`release-evidence` Actions artifact**,
-alongside the crate, SBOM and checksums. These are release-workflow
-artifacts, not GitHub Release assets. They expire after 90 days (or sooner
-if repository retention policy requires it); download and retain them for
-long-term/offline use. No existing publication is retroactively attested,
+alongside the crate, SBOM and checksums covering all four payload files.
+The separately gated `release-evidence` job copies all five files to the
+matching **GitHub Release** as assets. GitHub Release assets are not subject
+to Actions artifact expiry, making them the durable download location for
+sites preparing offline verification months or years later. They persist
+until an authorized user deletes the assets, Release, or repository; sites
+should still archive their own copy. The Actions artifacts are a temporary
+transfer/fallback, expiring after 90 days (or sooner under repository policy).
+No existing publication is retroactively attested,
 and no SLSA assurance level or badge is claimed by this change.
 
 ### Online verification
 
 Use a current [GitHub CLI with attestation support](https://cli.github.com/manual/gh_attestation_verify).
-Choose the version, release run, and reviewed commit independently from
+Choose the version and reviewed commit independently from
 main history and the tag; do not accept arbitrary values from a downloaded
-checksum file. For example (replace all three values):
+checksum file. For example (replace both values):
 
 ```sh
 set -eu
 version=X.Y.Z
-run_id=REPLACE_WITH_RELEASE_RUN_ID
 commit=REPLACE_WITH_REVIEWED_TAG_COMMIT_SHA
-gh run download "$run_id" -R TelemetryWorks/irig106-types -n release-evidence -D evidence
+gh release download "v$version" -R TelemetryWorks/irig106-types -D evidence
 cd evidence
 sha256sum -c SHA256SUMS
 curl --fail --location "https://crates.io/api/v1/crates/irig106-types/$version/download" -o registry.crate
@@ -239,6 +250,11 @@ gh attestation verify "irig106-types-$version.crate" \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
   --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom
 ```
+
+If the Release-assets job failed after publication, the same-run Actions
+artifact remains a temporary fallback while retained:
+`gh run download RUN_ID -R TelemetryWorks/irig106-types -n release-evidence -D evidence`.
+Obtain that run ID independently from the reviewed tag's workflow run.
 
 `SHA256SUMS` detects transfer errors; the signed attestations establish
 identity. The first verification requires the SLSA provenance predicate by
@@ -282,6 +298,13 @@ live crates.io download must happen online. A failed attestation step
 **after publication** means the version may already exist: inspect the
 registry and run logs, preserve the evidence, and resolve through review.
 Never move the tag or republish under the same version to repair evidence.
+
+The durable-assets job fails rather than overwriting an existing Release or
+its assets. If an upload fails, a draft may remain. Inspect the existing
+Release/draft and preserve the original same-run artifact; resolve recovery
+through owner review. Do not delete or replace previously published evidence
+or bypass the environment gate just to make a retry pass. No settings change
+is needed: both gated jobs use the existing protected `crates-io` environment.
 
 ## Package contents and failures
 

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Weekly OpenSSF Scorecard publishing and SARIF, workflow security checks with zizmor, and repository/package badges.
-- Release-workflow SLSA provenance and a CycloneDX SBOM bound to the exact crates.io archive, with downloadable verification bundles and online/offline verification instructions. These apply to future releases using the updated workflow; existing releases are not retroactively attested.
+- Release-workflow SLSA provenance and a CycloneDX SBOM bound to the exact crates.io archive, with downloadable verification bundles and online/offline verification instructions. A separately environment-gated job retains the evidence as GitHub Release assets beyond Actions artifact expiry. These apply to future releases using the updated workflow; existing releases are not retroactively attested.
 
 ## [0.1.0] - 2026-11-15
 
