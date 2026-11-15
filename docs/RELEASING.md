@@ -9,14 +9,18 @@ release; 0.0.1 was a name placeholder. Do not reuse an existing version.
 
 ## Historical publication: 0.1.0 (2026-11-15)
 
-Version **0.1.0 was published from `.github/workflows/release.yml`**.
+Version **0.1.0 was published by attempt 2 from `.github/workflows/release.yml`**.
 The [crates.io version record](https://crates.io/api/v1/crates/irig106-types/0.1.0)
 identifies GitHub run **`43727921675`** and commit
 `3c517358694646652939c236968b202ebf76e28a` in `trustpub_data`;
-the [historical run](https://github.com/TelemetryWorks/irig106-types/actions/runs/43727921675)
-records that workflow path. This predates the supply-chain pilot: that
-workflow did not produce the new SLSA or SBOM attestations. Renaming the
-workflow does not change the publication record or retroactively attest 0.1.0.
+the [successful publishing attempt (2)](https://github.com/TelemetryWorks/irig106-types/actions/runs/43727921675/attempts/2)
+records that workflow path. [Attempt 3](https://github.com/TelemetryWorks/irig106-types/actions/runs/43727921675/attempts/3)
+was a later rerun that failed because 0.1.0 already existed, so the run's
+landing page shows failure rather than attempt 2's successful publication.
+See the [organization SECURITY-PROGRAM attempt history](https://github.com/TelemetryWorks/.github/blob/8c3fd1b50ada9195bddd810ecc3a83ad756ab27c/SECURITY-PROGRAM.md#verified-release-and-attempt-history).
+This predates the supply-chain pilot: that workflow did not produce the
+new SLSA or SBOM attestations. Renaming the workflow does not change the
+publication record or retroactively attest 0.1.0.
 The verification examples below apply to future releases made by
 `trusted-publishing.yml` after the pilot is merged.
 
@@ -147,9 +151,11 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    before creating provenance and SBOM attestations. A mismatch fails the
    release evidence steps; it cannot undo an upload already accepted by
    crates.io. Stop and investigate rather than retrying a different payload.
-7. The separate `release-assets` job then waits for the same protected
-   `crates-io` environment approval. Inspect the successful publish/attestation
-   results before approving. Only this job has `contents: write`, with no OIDC
+7. After `publish` completes, `release-assets` becomes a **second pending
+   `crates-io` deployment requiring its own explicit approval**. The first
+   approval does not approve this job. Follow the
+   [second approval checklist](#second-approval-release-assets-deployment)
+   before approving it. Only this job has `contents: write`, with no OIDC
    permission or registry credentials. It downloads and checks the evidence,
    rechecks that the remote tag resolves to the verified commit, then creates
    a **draft GitHub Release for that existing tag** (`--verify-tag`) if needed.
@@ -167,11 +173,14 @@ not resources created/configured by this workflow.
 
 ## Approver checklist before crates-io deployment
 
-Before approving the pending deployment, the owner must independently:
+Before approving the first pending deployment (`publish`), the owner must
+independently:
 
 - Get the run's actual commit SHA and tag from the GitHub Actions run page,
   not only the `verify` job's output. Confirm the annotated release tag
   points to that commit and the version matches the reviewed release PR.
+  Record the run ID, tag, commit SHA, and reviewed workflow Git blob ID for
+  comparison at the second approval.
 - Fetch current main in a trusted checkout and confirm the run's commit is
   on main. Do not rely on the ancestry assertion in the tag's workflow.
 - Identify the reviewed `trusted-publishing.yml` on main by its immutable commit SHA
@@ -199,6 +208,32 @@ test "$release_workflow_blob" = "$reviewed_workflow_blob"
 
 Matching Git blob IDs establish identical file bytes. These checks complement
 the environment approval and tag ruleset; they are not delegated to `verify`.
+
+## Second approval: release-assets deployment
+
+After publication, the owner must separately review and approve the second
+pending `crates-io` deployment for `release-assets`. Before approving:
+
+- Compare the pending deployment with the first approval's recorded evidence:
+  it must be the **same workflow run ID, tag, commit SHA, and reviewed
+  `.github/workflows/trusted-publishing.yml` Git blob ID**. Repeat the
+  independent blob comparison above; a green publish job does not replace
+  this identity check.
+- In that run's `publish` job, confirm **Confirm crates.io serves the exact
+  verified archive** passed. This is the byte comparison against the actual
+  crates.io download; a successful upload alone is insufficient.
+- Confirm **both** SLSA provenance and CycloneDX SBOM attestations exist for
+  that exact crate's **SHA-256 digest**. Either inspect the successful
+  **Attest published crate provenance** and **Attest CycloneDX SBOM for the
+  same crate** steps and their subject digests in that run, or run both
+  signer/tag/commit-constrained `gh attestation verify` commands in the
+  verification paths below against the crates.io crate. Require both
+  predicates to bind to the same digest as the byte-verified crate.
+
+If any evidence is missing, failed, or differs from the first approval,
+**do not approve**. Investigate through owner review; do not bypass the gate
+or rerun publication just to obtain release assets. Only after these checks
+should the owner approve `release-assets` to retain the five evidence files.
 
 ## Verify the published crate
 
