@@ -76,10 +76,11 @@ intended main/scheduled or approved tag events. Online/offline verification
 commands were checked against `gh attestation verify --help` and
 `gh attestation trusted-root --help`; no new signed bundle exists yet to verify.
 After the main-merge follow-up, Actions artifacts remain the 90-day transfer
-and fallback, and a separate `crates-io`-gated job retains the same five files
+and fallback, and a separate `crates-io`-gated `release-assets` job retains the same five files
 as GitHub Release assets. Only that job has contents write; it has no OIDC
 permission, checkout step, or registry token. It creates a draft for an existing
-tag, uploads before publishing, and refuses to overwrite an existing Release.
+tag and uploads before publishing. Retries add missing assets and retain
+byte-identical existing assets; mismatched existing evidence fails.
 The checksum manifest now covers both bundles as well as the crate and SBOM.
 No SLSA level or existing-release provenance is claimed.
 
@@ -93,8 +94,9 @@ The GitHub Release CLI contracts were checked against local `gh release create`,
 `edit`, and `download` help. A read-only Releases API query confirmed that this
 repository currently has no Releases. `--verify-tag` prevents implicit tag
 creation; draft creation plus successful asset uploads precedes publishing.
-Existing Releases/drafts fail closed and require owner-reviewed recovery.
-The durable job is proposed for review; no Release, draft, asset upload,
+The initial job at 6432521 refused existing Releases/drafts; the owner-decision
+follow-up below replaces that with safe retention of identical existing assets.
+The durable job is owner-approved (2026-11-15) and implemented for review; no Release, draft, asset upload,
 environment approval, or settings change was performed during this assignment.
 
 Re-ran all 14 upstream API pin/input-output contract checks after the merge;
@@ -106,3 +108,54 @@ draft-publication failure. Negative cases exit before subsequent mutation
 steps; the success case supplies exactly five files and uses `--verify-tag`
 on both release commands. Mocked cases do not establish live GitHub behavior
 or simulate an environment approval; no mutation API was invoked.
+
+## Owner decision: release-assets and both verification paths
+
+Owner approved durable GitHub Release assets on 2026-11-15. `release-assets`
+now has `needs: publish`, which forwards the verified commit/version; the
+job's complete permissions map is `{contents: write}` (no OIDC/attestations).
+It uses the existing protected `crates-io` environment, avoiding a new
+unconfigured gate. Before Release mutation it resolves the remote tag,
+including annotated tags, and requires the verified commit and version.
+It creates a draft or adds missing assets to an existing Release, compares
+existing files byte-for-byte, and never clobbers evidence. No tag is created
+or moved. Existing published Releases can temporarily have partial assets
+if an update fails; recovery is reviewed and does not replace evidence.
+
+Executed after this change:
+
+- actionlint 1.7.12 and zizmor 1.32.0 regular persona: clean (offline audits).
+- Full CI equivalent: all three test configurations, all three MSRV checks,
+  clippy/fmt/rustdoc/wasm passed again.
+- Fourteen cases of the actual job shell script with mocked `gh` passed:
+  new annotated tag, new lightweight tag, existing identical published Release,
+  partial draft retry, checksum mismatch, missing bundle, wrong version,
+  moved tag, excessive nested tags, create failure, upload failure,
+  existing asset mismatch, metadata-read failure, and draft-publication failure.
+  No live mutation was performed; these exercise local control flow only.
+- All ten checkout steps still pin v7.0.1 at
+  `3d3c42e5aac5ba805825da76410c181273ba90b1` and disable credential persistence.
+- Five documented shell blocks pass `bash -n`. Eight synthetic verified-output
+  cases validate the documented SBOM extraction/comparison code: accepted
+  CycloneDX, empty results, conflicting predicates, and non-CycloneDX for
+  each path. Real signing/offline bundle verification awaits a future release.
+- CLI contracts checked against `gh release view/upload` and
+  `gh attestation download/verify/trusted-root` help. Documentation covers
+  both permanent Release downloads with advance trusted roots and offline
+  bundle verification, and crates.io plus GitHub attestation downloads with
+  SBOM extraction only from successful verification output. Both enforce
+  signer workflow, tag, commit, hosted runner, and predicate identity.
+
+### Auditor note (non-gating)
+
+`zizmor --offline --persona auditor` exits 13 with **15 findings**: six
+`superfluous-actions` (informational, the pinned Rust toolchain actions),
+three `concurrency-limits` (low, CI/Scorecard/zizmor), three
+`undocumented-permissions` (low, release/Scorecard), two `anonymous-definition`
+(informational, verify/publish job names), and one `excessive-permissions`
+(medium, the owner-required official Scorecard template's top-level `read-all`).
+Scorecard's job explicitly narrows its permissions; this workflow-level setting
+is intentional per the assignment/template. The other items are style/resource
+suggestions outside the regular persona; no high findings or repository
+suppressions were introduced. The gating regular audit remains clean.
+This note describes offline auditor checks, not an online auditor run.

@@ -111,12 +111,14 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    before creating provenance and SBOM attestations. A mismatch fails the
    release evidence steps; it cannot undo an upload already accepted by
    crates.io. Stop and investigate rather than retrying a different payload.
-7. The separate `release-evidence` job then waits for the same protected
+7. The separate `release-assets` job then waits for the same protected
    `crates-io` environment approval. Inspect the successful publish/attestation
    results before approving. Only this job has `contents: write`, with no OIDC
    permission or registry credentials. It downloads and checks the evidence,
-   creates a **draft GitHub Release for the existing tag** (`--verify-tag`),
-   uploads the assets, and publishes the Release after uploads succeed.
+   rechecks that the remote tag resolves to the verified commit, then creates
+   a **draft GitHub Release for that existing tag** (`--verify-tag`) if needed.
+   It uploads missing assets, compares existing assets byte-for-byte without
+   overwriting, and publishes a draft only after all five files are present.
    It does not change the tag or the repository's Latest release selection.
 8. Wait for the workflow to finish, then verify the result on crates.io as
    described below. Do not call a release complete merely because a tag exists.
@@ -212,7 +214,7 @@ and a [CycloneDX SBOM attestation](https://github.com/actions/attest-sbom)
 with the crate's SHA-256 as subject. Both are stored with GitHub and their
 Sigstore bundles are copied to the **`release-evidence` Actions artifact**,
 alongside the crate, SBOM and checksums covering all four payload files.
-The separately gated `release-evidence` job copies all five files to the
+The separately gated `release-assets` job copies all five files to the
 matching **GitHub Release** as assets. GitHub Release assets are not subject
 to Actions artifact expiry, making them the durable download location for
 sites preparing offline verification months or years later. They persist
@@ -222,62 +224,38 @@ transfer/fallback, expiring after 90 days (or sooner under repository policy).
 No existing publication is retroactively attested,
 and no SLSA assurance level or badge is claimed by this change.
 
-### Online verification
+### Path A: permanent Release set and offline verification
 
 Use a current [GitHub CLI with attestation support](https://cli.github.com/manual/gh_attestation_verify).
-Choose the version and reviewed commit independently from
-main history and the tag; do not accept arbitrary values from a downloaded
-checksum file. For example (replace both values):
+These shell examples assume a POSIX system with `sha256sum`, `curl`, and
+Python 3. Choose the version and reviewed commit independently from main
+history and the tag; never trust a downloaded checksum file to choose them.
+While online, download the permanent Release set, fetch trusted roots
+independently, and compare the Release crate with the crates.io download:
 
 ```sh
 set -eu
 version=X.Y.Z
 commit=REPLACE_WITH_REVIEWED_TAG_COMMIT_SHA
 gh release download "v$version" -R TelemetryWorks/irig106-types -D evidence
+gh attestation trusted-root > trusted_root.jsonl
 cd evidence
 sha256sum -c SHA256SUMS
 curl --fail --location "https://crates.io/api/v1/crates/irig106-types/$version/download" -o registry.crate
 cmp "irig106-types-$version.crate" registry.crate
-sha256sum "irig106-types-$version.crate" registry.crate
-gh attestation verify "irig106-types-$version.crate" \
-  -R TelemetryWorks/irig106-types \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
-  --source-ref "refs/tags/v$version" --source-digest "$commit" \
-  --deny-self-hosted-runners
-gh attestation verify "irig106-types-$version.crate" \
-  -R TelemetryWorks/irig106-types \
-  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
-  --source-ref "refs/tags/v$version" --source-digest "$commit" \
-  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom
 ```
 
-If the Release-assets job failed after publication, the same-run Actions
-artifact remains a temporary fallback while retained:
-`gh run download RUN_ID -R TelemetryWorks/irig106-types -n release-evidence -D evidence`.
-Obtain that run ID independently from the reviewed tag's workflow run.
-
-`SHA256SUMS` detects transfer errors; the signed attestations establish
-identity. The first verification requires the SLSA provenance predicate by
-default; the second requires the SBOM predicate. To inspect the signed
-SBOM, add `--format json` and examine the verified statement's `predicate`;
-compare its JSON content with `sbom.cdx.json`. The SBOM predicate is bound
-to the crate hash, not to a separate signature over the JSON file's bytes.
-
-### Offline verification
-
-While still online, obtain trusted roots independently using
-`gh attestation trusted-root > trusted_root.jsonl`. Save that trusted file,
-the entire evidence directory (including both `.sigstore.json` bundles),
-and the independently verified tag/commit identity. Transfer them securely
-to the offline machine. Do not replace your trusted roots with an
-untrusted artifact's supplied trust configuration.
-
-On the offline machine, set `version` and `commit` as above, enter the
-evidence directory, and run:
+Save the entire evidence directory, `trusted_root.jsonl` in its parent, and
+the independently verified version/commit identity. Transfer them securely
+to the disconnected site. Do not accept an artifact supplier's replacement
+trust configuration in place of independently fetched trusted roots.
+On the offline machine, set `version` and `commit` to those trusted values,
+enter the evidence directory, and run:
 
 ```sh
 set -eu
 sha256sum -c SHA256SUMS
+cmp "irig106-types-$version.crate" registry.crate
 gh attestation verify "irig106-types-$version.crate" \
   -R TelemetryWorks/irig106-types --bundle provenance.sigstore.json \
   --custom-trusted-root ../trusted_root.jsonl \
@@ -289,22 +267,109 @@ gh attestation verify "irig106-types-$version.crate" \
   --custom-trusted-root ../trusted_root.jsonl \
   --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
   --source-ref "refs/tags/v$version" --source-digest "$commit" \
-  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom
+  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom \
+  --format json > verified-sbom.json
+python3 - <<'PYCHECK'
+import json
+from pathlib import Path
+results = json.loads(Path('verified-sbom.json').read_text())
+boms = [r['verificationResult']['statement']['predicate'] for r in results]
+local = json.loads(Path('sbom.cdx.json').read_text())
+if local.get('bomFormat') != 'CycloneDX' or not boms or any(b != local for b in boms):
+    raise SystemExit('Release SBOM differs from the verified predicate')
+PYCHECK
 ```
 
-The local bundles and trusted roots remove the need for network lookups.
-An offline check authenticates the saved crate; comparing it with the
-live crates.io download must happen online. A failed attestation step
-**after publication** means the version may already exist: inspect the
-registry and run logs, preserve the evidence, and resolve through review.
-Never move the tag or republish under the same version to repair evidence.
+The bundles and trusted roots avoid network lookups. The offline `cmp`
+compares a saved crates.io download, not the live registry; obtaining and
+checking that download must happen while connected. `SHA256SUMS` detects
+transfer errors, including changes to the bundles. Attestation verification
+establishes identity and binds the SBOM predicate to the crate's hash; the
+checksum manifest alone does not authenticate any file. To authenticate
+`sbom.cdx.json` content, the Python check above compares its parsed JSON with
+the verified predicate, ignoring formatting. No online download is needed.
 
-The durable-assets job fails rather than overwriting an existing Release or
-its assets. If an upload fails, a draft may remain. Inspect the existing
-Release/draft and preserve the original same-run artifact; resolve recovery
-through owner review. Do not delete or replace previously published evidence
-or bypass the environment gate just to make a retry pass. No settings change
-is needed: both gated jobs use the existing protected `crates-io` environment.
+### Path B: crates.io and durable online attestation lookup
+
+This path does not depend on either Actions artifacts or Release assets.
+It uses the crates.io archive and GitHub's stored attestations. From a new
+empty directory, set the independently checked `version` and `commit`, then:
+
+```sh
+set -eu
+version=X.Y.Z
+commit=REPLACE_WITH_REVIEWED_TAG_COMMIT_SHA
+crate="irig106-types-$version.crate"
+curl --fail --location "https://crates.io/api/v1/crates/irig106-types/$version/download" -o "$crate"
+gh attestation trusted-root > trusted_root.jsonl
+mkdir provenance-bundles sbom-bundles
+(cd provenance-bundles && gh attestation download "../$crate" \
+  -R TelemetryWorks/irig106-types --predicate-type https://slsa.dev/provenance/v1)
+(cd sbom-bundles && gh attestation download "../$crate" \
+  -R TelemetryWorks/irig106-types --predicate-type https://cyclonedx.org/bom)
+gh attestation verify "$crate" \
+  -R TelemetryWorks/irig106-types --bundle provenance-bundles/*.jsonl \
+  --custom-trusted-root trusted_root.jsonl \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners
+gh attestation verify "$crate" \
+  -R TelemetryWorks/irig106-types --bundle sbom-bundles/*.jsonl \
+  --custom-trusted-root trusted_root.jsonl \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom \
+  --format json > verified-sbom.json
+python3 - <<'PYBOM'
+import json
+from pathlib import Path
+results = json.loads(Path('verified-sbom.json').read_text())
+boms = [r['verificationResult']['statement']['predicate'] for r in results]
+if not boms or any(b != boms[0] for b in boms):
+    raise SystemExit('No verified SBOM or conflicting verified SBOM predicates')
+if boms[0].get('bomFormat') != 'CycloneDX':
+    raise SystemExit('Verified predicate is not a CycloneDX SBOM')
+Path('sbom.cdx.json').write_text(json.dumps(boms[0], indent=2) + '\n')
+PYBOM
+```
+
+`gh attestation download` writes digest-named `.jsonl` files; each new
+subdirectory above contains one downloaded set for its predicate type.
+Always extract the SBOM from **successful verification output**, not from
+an unverified bundle's payload. The signer workflow, tag, commit, predicate,
+and hosted-runner checks apply to both paths. Keep the crate, downloaded
+bundles, trusted roots, and verified identity for later offline use. The
+SBOM is authenticated as a predicate about the crate, not a separate
+signature over the JSON file's bytes.
+
+### Retention, gating, and recovery
+
+Owner decision (2026-11-15): every release retains all five files as GitHub
+Release assets. We use the **existing protected `crates-io` environment**
+for the separate `release-assets` job, rather than a new environment whose
+reviewers/tag restrictions might be missing. It needs only `publish`, which
+forwards the verified commit/version. Its only permission is `contents: write`;
+OIDC and attestations permissions are absent. The independently reviewed
+workflow and remote tag-to-commit check control which tag it may update.
+No environment or repository settings change is performed by this PR.
+
+If asset retention fails after publication, the same-run Actions artifact
+is a temporary fallback while retained:
+`gh run download RUN_ID -R TelemetryWorks/irig106-types -n release-evidence -D evidence`.
+Obtain the run ID independently from the reviewed tag's run. Path B remains
+available independently of that artifact's expiry. Release assets persist
+until deletion by an authorized user; disconnected sites should archive
+both the files and their independently obtained trusted roots.
+
+Retries add missing assets only. Identical existing files are retained;
+a byte mismatch, including a different attestation bundle from a later run,
+fails rather than replacing evidence. A failed initial upload leaves a draft;
+updating an already published Release can leave a partial asset set until
+recovery finishes. Inspect the Release and original run artifact before
+owner-reviewed recovery. Never overwrite published evidence, move the tag,
+bypass environment approval, or republish the crate to repair assets.
+A failed attestation or asset step **after publication** does not undo an
+upload already accepted by crates.io.
 
 ## Package contents and failures
 
