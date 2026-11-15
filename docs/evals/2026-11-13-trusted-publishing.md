@@ -26,8 +26,7 @@ Sources: [auth action at the pinned commit](https://github.com/rust-lang/crates-
 
 ## Executed guard cases
 
-Executed the Python guard extracted verbatim from the publishing workflow
-(now `.github/workflows/trusted-publishing.yml`) with simulated
+Executed the Python guard extracted verbatim from release.yml with simulated
 GitHub event metadata. The successful case used the actual checked-out main
 commit, actual manifest, and actual Git ancestry. No tag was created.
 The off-main case mocked Git's ancestry rejection; other Git operations ran
@@ -54,7 +53,7 @@ against this repository. Rejections produced no commit output for publication.
 
 All 16 expectations passed. Static checks also confirmed no manual dispatch,
 only one id-token permission grant, and no stored-secret references.
-Actionlint v1.7.12 passed the publishing workflow; its downloaded archive checksum was
+Actionlint v1.7.12 passed release.yml; its downloaded archive checksum was
 verified against the upstream release checksums. No release action was run.
 
 Actual environment enforcement and OIDC issuance cannot be exercised by this

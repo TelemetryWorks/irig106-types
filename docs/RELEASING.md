@@ -7,20 +7,40 @@ real `cargo publish` locally. Local `cargo publish --dry-run` is allowed;
 it packages and verifies without uploading. Version 0.1.0 is the first real
 release; 0.0.1 was a name placeholder. Do not reuse an existing version.
 
-## Workflow filename migration (owner action before the next release)
+## Historical publication: 0.1.0 (2026-11-15)
+
+Version **0.1.0 was published from `.github/workflows/release.yml`**.
+The [crates.io version record](https://crates.io/api/v1/crates/irig106-types/0.1.0)
+identifies GitHub run **`43727921675`** and commit
+`3c517358694646652939c236968b202ebf76e28a` in `trustpub_data`;
+the [historical run](https://github.com/TelemetryWorks/irig106-types/actions/runs/43727921675)
+records that workflow path. This predates the supply-chain pilot: that
+workflow did not produce the new SLSA or SBOM attestations. Renaming the
+workflow does not change the publication record or retroactively attest 0.1.0.
+The verification examples below apply to future releases made by
+`trusted-publishing.yml` after the pilot is merged.
+
+## Workflow filename migration (owner action before the next tag)
 
 Owner org standard (2026-11-15): every TelemetryWorks publishing workflow
 uses **`.github/workflows/trusted-publishing.yml`**. The displayed Actions
 workflow name remains **Release**.
 
-Before the next irig106-types release, the owner must update its crates.io
-Trusted Publisher from **`release.yml`** to **`trusted-publishing.yml`**
-under **crates.io → irig106-types → Settings → Trusted Publishing**. Keep
-owner `TelemetryWorks`, repository `irig106-types`, and environment
-`crates-io`. This is an owner settings action, not performed by this PR.
-Trusted-publishing-only mode is enabled: a filename mismatch fails
-authentication and safely blocks publishing. Do not substitute a stored
-token or local publication to bypass it.
+**Required owner step, dated 2026-11-15 — complete and verify BEFORE the
+next tag:**
+
+1. Under **crates.io → irig106-types → Settings → Trusted Publishing**,
+   update the existing publisher's historical filename **`release.yml`** to
+   **`trusted-publishing.yml`**. Keep owner `TelemetryWorks`, repository
+   `irig106-types`, and environment `crates-io`.
+2. Save, reopen the publisher settings, and independently verify all four
+   saved fields against the table below **before creating or pushing the
+   next release tag**. Do not assume the workflow rename updates crates.io.
+3. Confirm **`trustpub_only` remains enabled**. A filename mismatch fails
+   authentication and safely blocks the release. Do not substitute a stored
+   token or local publication to bypass it.
+
+This is an owner settings action, not performed by this PR.
 
 ## One-time owner setup (before any release tag)
 
@@ -82,7 +102,8 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    `cargo package --locked --list`, and
    `cargo publish --locked --registry crates-io --dry-run`.
 2. Obtain independent review, pass CI, and **merge the PR into main**.
-   Ensure the one-time setup above is complete. Confirm the intended version
+   Ensure the one-time setup and dated publisher migration/verification
+   above are complete before tagging. Confirm the intended version
    is not already on crates.io; versions cannot be overwritten.
 3. From a clean local checkout of the reviewed main commit, the owner creates
    and pushes an **annotated tag**. For 0.1.0:

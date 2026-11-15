@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Standardized the publishing workflow filename to `.github/workflows/trusted-publishing.yml`; the owner must update the crates.io Trusted Publisher before the next release. Trusted-publishing-only mode safely blocks a filename mismatch.
+- Standardized the publishing workflow filename to `.github/workflows/trusted-publishing.yml`; the owner must update and verify the crates.io Trusted Publisher before the next tag. Trusted-publishing-only mode safely blocks a filename mismatch.
 
 ## [0.1.0] - 2026-11-15
 

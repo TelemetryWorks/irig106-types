@@ -166,8 +166,29 @@ Owner decision (2026-11-15): renamed the workflow with `git mv` to
 `.github/workflows/trusted-publishing.yml`, preserving its history and
 `name: Release`. Updated the publisher field, independent approver blob
 comparisons, all attestation signer-workflow policies, README, CHANGELOG,
-and the earlier pilot record's current-path reference. The owner must update
+while retaining the earlier pilot record's historical workflow filename. The owner must update
 the crates.io Trusted Publisher before the next release; this PR performs
 no settings change. Trusted-publishing-only mode blocks authentication on a
 filename mismatch. Release job permissions, gates, and checkout pins remain
 unchanged by this rename.
+
+## Historical publication and pre-tag migration clarification
+
+Read-only checks on 2026-11-15 confirmed the crates.io 0.1.0 version API's
+`trustpub_data`: repository TelemetryWorks/irig106-types, run 43727921675,
+commit 3c517358694646652939c236968b202ebf76e28a. The GitHub run API records
+`.github/workflows/release.yml` as its historical path. This confirms the
+publication source, not a claim that every step of that run succeeded.
+0.1.0 predates the new attestations; neither this rename nor the pilot
+retroactively attests that release. The historical 2026-11-13 readiness
+record and the published 0.1.0 CHANGELOG section retain their original text.
+
+Current verification examples all require signer workflow
+`TelemetryWorks/irig106-types/.github/workflows/trusted-publishing.yml`.
+The dated owner migration now requires saving, reopening, and verifying the
+crates.io Trusted Publisher fields BEFORE the next tag, retaining
+`trustpub_only`. The old workflow filename appears only in historical
+publication/readiness/migration context; current publisher fields, links,
+approver comparisons, and verification policies use the new filename.
+Zizmor still audits the entire `.github/workflows` directory, including
+the renamed file. No publisher settings were changed by this assignment.
