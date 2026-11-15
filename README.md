@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/TelemetryWorks/irig106-types/badge)](https://scorecard.dev/viewer/?uri=github.com/TelemetryWorks/irig106-types)
 [![crates.io](https://img.shields.io/crates/v/irig106-types.svg)](https://crates.io/crates/irig106-types)
 [![docs.rs](https://docs.rs/irig106-types/badge.svg)](https://docs.rs/irig106-types)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/TelemetryWorks/irig106-types/blob/main/LICENSE)
 
 Zero-cost abstractions and foundational types for IRIG 106 telemetry.
 

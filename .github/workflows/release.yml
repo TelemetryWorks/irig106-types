@@ -100,7 +100,7 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           cargo +stable cyclonedx --manifest-path "target/package/irig106-types-$VERSION/Cargo.toml" --all-features --target all --format json --spec-version 1.5
-          cp "target/package/irig106-types-$VERSION/bom.json" release-artifacts/sbom.cdx.json
+          cp "target/package/irig106-types-$VERSION/irig106-types.cdx.json" release-artifacts/sbom.cdx.json
           cd release-artifacts
           sha256sum "irig106-types-$VERSION.crate" sbom.cdx.json > SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
