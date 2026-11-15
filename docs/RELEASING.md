@@ -4,8 +4,8 @@ Owner policy (2026-11-13): **crates.io Trusted Publishing (OIDC) from GitHub
 Actions only**, for every TelemetryWorks repository. Never create or store a
 long-lived `CARGO_REGISTRY_TOKEN`, run `cargo login` for releases, or run a
 real `cargo publish` locally. Local `cargo publish --dry-run` is allowed;
-it packages and verifies without uploading. Version 0.1.0 is the planned
-first real release; the existing 0.0.1 on crates.io is a placeholder.
+it packages and verifies without uploading. Version 0.1.0 is the first real
+release; 0.0.1 was a name placeholder. Do not reuse an existing version.
 
 ## One-time owner setup (before any release tag)
 
@@ -59,11 +59,10 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
 ## Release procedure
 
 1. Open a version-bump/release-preparation PR updating `Cargo.toml`,
-   `Cargo.lock` if necessary, README, and CHANGELOG. For the first release,
-   keep **0.1.0**, since it has not been published. Consolidate `[Unreleased]`
-   into the version's changelog entry and set its date **in the release-prep
-   PR**. For 0.1.0, use **2026-11-14**; if this PR merges on a later date,
-   update the date before merge and re-review the change. Review the
+   `Cargo.lock` if necessary, README, and CHANGELOG. Use a version that has
+   never been published. Consolidate `Unreleased` into the version's
+   changelog entry and set its date **in the release-prep PR** to the intended
+   tag day; update it before merge if that day changes. Review the
    package list and run the [development checks](../README.md#development-checks),
    `cargo package --locked --list`, and
    `cargo publish --locked --registry crates-io --dry-run`.
@@ -101,9 +100,17 @@ and [GitHub environment setup](https://docs.github.com/en/actions/how-tos/deploy
    the job is checked against the snapshot fetched during verification.
 6. After approval, the publish job obtains a short-lived token with
    `rust-lang/crates-io-auth-action` (full-SHA pin for v1.0.6). Only that job
-   has `id-token: write` and `contents: read`. Only its publish step receives
+   has release permissions `id-token: write`, `attestations: write`, and
+   `contents: read`. Only its publish step receives
    `CARGO_REGISTRY_TOKEN` from `steps.auth.outputs.token`. The action revokes
    the temporary token on job completion. There are no other secrets.
+   Before authentication, it checks the downloaded verification artifact's
+   checksums and reproduces its crate with the exact Rust version recorded
+   by `verify`. Cargo packages again during publishing; the job downloads
+   the crates.io archive and requires byte identity with the verified crate
+   before creating provenance and SBOM attestations. A mismatch fails the
+   release evidence steps; it cannot undo an upload already accepted by
+   crates.io. Stop and investigate rather than retrying a different payload.
 7. Wait for the workflow to finish, then verify the result on crates.io as
    described below. Do not call a release complete merely because a tag exists.
 
@@ -180,6 +187,101 @@ the environment approval and tag ruleset; they are not delegated to `verify`.
   with rustup if needed. This checks consumption; it does not publish anything.
 - Optional read-only metadata check:
   `cargo info irig106-types@0.1.0 --registry crates-io`.
+
+## Release evidence and attestations
+
+For releases made with this workflow, `verify` packages the crate and runs
+all checks, then generates `sbom.cdx.json` with **cargo-cyclonedx 0.5.9**
+(`--locked` installation). The SBOM describes the extracted packaged
+manifest with all features and all target dependencies; it is an inventory
+of the source crate, not a claim about a particular consumer's binary.
+The same run's immutable `release-package` Actions artifact transfers the
+crate, SBOM, and `SHA256SUMS` to the environment-gated publish job. Only
+that release job can write attestations or request a release OIDC token.
+
+After confirming the registry serves exactly that crate, the job creates
+[SLSA build provenance](https://github.com/actions/attest-build-provenance)
+and a [CycloneDX SBOM attestation](https://github.com/actions/attest-sbom)
+with the crate's SHA-256 as subject. Both are stored with GitHub and their
+Sigstore bundles are copied to the **`release-evidence` Actions artifact**,
+alongside the crate, SBOM and checksums. These are release-workflow
+artifacts, not GitHub Release assets. They expire after 90 days (or sooner
+if repository retention policy requires it); download and retain them for
+long-term/offline use. No existing publication is retroactively attested,
+and no SLSA assurance level or badge is claimed by this change.
+
+### Online verification
+
+Use a current [GitHub CLI with attestation support](https://cli.github.com/manual/gh_attestation_verify).
+Choose the version, release run, and reviewed commit independently from
+main history and the tag; do not accept arbitrary values from a downloaded
+checksum file. For example (replace all three values):
+
+```sh
+set -eu
+version=X.Y.Z
+run_id=REPLACE_WITH_RELEASE_RUN_ID
+commit=REPLACE_WITH_REVIEWED_TAG_COMMIT_SHA
+gh run download "$run_id" -R TelemetryWorks/irig106-types -n release-evidence -D evidence
+cd evidence
+sha256sum -c SHA256SUMS
+curl --fail --location "https://crates.io/api/v1/crates/irig106-types/$version/download" -o registry.crate
+cmp "irig106-types-$version.crate" registry.crate
+sha256sum "irig106-types-$version.crate" registry.crate
+gh attestation verify "irig106-types-$version.crate" \
+  -R TelemetryWorks/irig106-types \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners
+gh attestation verify "irig106-types-$version.crate" \
+  -R TelemetryWorks/irig106-types \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom
+```
+
+`SHA256SUMS` detects transfer errors; the signed attestations establish
+identity. The first verification requires the SLSA provenance predicate by
+default; the second requires the SBOM predicate. To inspect the signed
+SBOM, add `--format json` and examine the verified statement's `predicate`;
+compare its JSON content with `sbom.cdx.json`. The SBOM predicate is bound
+to the crate hash, not to a separate signature over the JSON file's bytes.
+
+### Offline verification
+
+While still online, obtain trusted roots independently using
+`gh attestation trusted-root > trusted_root.jsonl`. Save that trusted file,
+the entire evidence directory (including both `.sigstore.json` bundles),
+and the independently verified tag/commit identity. Transfer them securely
+to the offline machine. Do not replace your trusted roots with an
+untrusted artifact's supplied trust configuration.
+
+On the offline machine, set `version` and `commit` as above, enter the
+evidence directory, and run:
+
+```sh
+set -eu
+sha256sum -c SHA256SUMS
+gh attestation verify "irig106-types-$version.crate" \
+  -R TelemetryWorks/irig106-types --bundle provenance.sigstore.json \
+  --custom-trusted-root ../trusted_root.jsonl \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners
+gh attestation verify "irig106-types-$version.crate" \
+  -R TelemetryWorks/irig106-types --bundle sbom.sigstore.json \
+  --custom-trusted-root ../trusted_root.jsonl \
+  --signer-workflow TelemetryWorks/irig106-types/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$version" --source-digest "$commit" \
+  --deny-self-hosted-runners --predicate-type https://cyclonedx.org/bom
+```
+
+The local bundles and trusted roots remove the need for network lookups.
+An offline check authenticates the saved crate; comparing it with the
+live crates.io download must happen online. A failed attestation step
+**after publication** means the version may already exist: inspect the
+registry and run logs, preserve the evidence, and resolve through review.
+Never move the tag or republish under the same version to repair evidence.
 
 ## Package contents and failures
 

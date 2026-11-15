@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 20
     outputs:
       commit: ${{ steps.release.outputs.commit }}
+      version: ${{ steps.release.outputs.version }}
+      toolchain: ${{ steps.toolchain.outputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -50,13 +52,16 @@ jobs:
               raise SystemExit('Checkout must match the triggering tag commit')
           subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
           with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              output.write(f'commit={commit}\n')
+              output.write(f'commit={commit}\nversion={version}\n')
           print(f'Verified {os.environ["GITHUB_REF_NAME"]} at {commit} on main')
           PY
       - name: Install Rust toolchains
         run: |
           rustup toolchain install stable --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
           rustup toolchain install 1.85.0 --profile minimal
+      - name: Record exact publish toolchain
+        id: toolchain
+        run: echo "version=$(rustc +stable --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
       - name: Tests
         run: |
           cargo +stable test --locked --all-features
@@ -79,29 +84,96 @@ jobs:
         run: cargo +stable build --locked --target wasm32-unknown-unknown --no-default-features
       - name: Package contents
         run: cargo +stable package --locked --list
-      - name: Publish dry run (no credentials)
-        run: cargo +stable publish --locked --registry crates-io --dry-run
+      - name: Package and publish dry run (no credentials)
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          cargo +stable package --locked
+          mkdir release-artifacts
+          cp "target/package/irig106-types-$VERSION.crate" release-artifacts/
+          cargo +stable publish --locked --registry crates-io --dry-run
+          cmp "release-artifacts/irig106-types-$VERSION.crate" "target/package/tmp-crate/irig106-types-$VERSION.crate"
+      - name: Install pinned SBOM generator
+        run: cargo +stable install cargo-cyclonedx --version 0.5.9 --locked
+      - name: Generate CycloneDX SBOM from the packaged crate
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          cargo +stable cyclonedx --manifest-path "target/package/irig106-types-$VERSION/Cargo.toml" --all-features --target all --format json --spec-version 1.5
+          cp "target/package/irig106-types-$VERSION/bom.json" release-artifacts/sbom.cdx.json
+          cd release-artifacts
+          sha256sum "irig106-types-$VERSION.crate" sbom.cdx.json > SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-package
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 90
 
   publish:
     needs: verify
     if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment: crates-io
     permissions:
       id-token: write
+      attestations: write
       contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.verify.outputs.commit }}
           persist-credentials: false
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-package
+          path: release-artifacts
+      - name: Reproduce the verified archive before obtaining credentials
+        env:
+          TOOLCHAIN: ${{ needs.verify.outputs.toolchain }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          (cd release-artifacts && sha256sum -c SHA256SUMS)
+          rustup toolchain install "$TOOLCHAIN" --profile minimal
+          cargo +"$TOOLCHAIN" publish --locked --registry crates-io --dry-run
+          cmp "release-artifacts/irig106-types-$VERSION.crate" "target/package/tmp-crate/irig106-types-$VERSION.crate"
       - name: Obtain short-lived crates.io token
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6 (v1)
       - name: Publish to crates.io
-        run: cargo +stable publish --locked --registry crates-io
+        run: cargo +"$TOOLCHAIN" publish --locked --registry crates-io
         env:
+          TOOLCHAIN: ${{ needs.verify.outputs.toolchain }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Confirm crates.io serves the exact verified archive
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          curl --fail --location --retry 8 --retry-all-errors --retry-delay 5 --retry-max-time 120 \
+            "https://crates.io/api/v1/crates/irig106-types/$VERSION/download" -o "$RUNNER_TEMP/registry.crate"
+          cmp "release-artifacts/irig106-types-$VERSION.crate" "$RUNNER_TEMP/registry.crate"
+      - name: Attest published crate provenance
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-artifacts/irig106-types-${{ needs.verify.outputs.version }}.crate
+      - name: Attest CycloneDX SBOM for the same crate
+        id: sbom
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: release-artifacts/irig106-types-${{ needs.verify.outputs.version }}.crate
+          sbom-path: release-artifacts/sbom.cdx.json
+      - name: Collect verification bundles
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          cp "$PROVENANCE_BUNDLE" release-artifacts/provenance.sigstore.json
+          cp "$SBOM_BUNDLE" release-artifacts/sbom.sigstore.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 90
