@@ -38,7 +38,11 @@ Primary references: [Scorecard template](https://github.com/ossf/scorecard/blob/
 
 - actionlint 1.7.12: all four workflows clean.
 - zizmor 1.32.0, default regular persona, offline audits: zero findings, no
-  repository suppressions/configuration. The PR job enables online audits with
+  repository suppressions/configuration. The initial PR run used the action's
+  whole-repository default and also reported two Dependabot cooldown findings.
+  The job now explicitly scans `.github/workflows`, matching this assignment,
+  without altering Dependabot policy or suppressing any workflow findings.
+  The PR job enables online audits with
   the read-only GitHub token; local offline success does not establish that result.
 - Full CI equivalent: tests (all features / no defaults / serde), all three
   Rust 1.85.0 checks, clippy with warnings denied, fmt, rustdoc with warnings
