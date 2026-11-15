@@ -1,5 +1,11 @@
 # irig106-types
 
+[![CI](https://github.com/TelemetryWorks/irig106-types/actions/workflows/ci.yml/badge.svg)](https://github.com/TelemetryWorks/irig106-types/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/TelemetryWorks/irig106-types/badge)](https://scorecard.dev/viewer/?uri=github.com/TelemetryWorks/irig106-types)
+[![crates.io](https://img.shields.io/crates/v/irig106-types.svg)](https://crates.io/crates/irig106-types)
+[![docs.rs](https://docs.rs/irig106-types/badge.svg)](https://docs.rs/irig106-types)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/TelemetryWorks/irig106-types/blob/main/LICENSE)
+
 Zero-cost abstractions and foundational types for IRIG 106 telemetry.
 
 `irig106-types` is intended as the shared vocabulary of the TelemetryWorks
@@ -136,8 +142,10 @@ See [standard evidence, API changes, and adoption steps](https://github.com/Tele
 **0.1.0 is the first real release**; 0.0.1 was a name placeholder.
 Releases are published only through GitHub Actions and crates.io Trusted
 Publishing (OIDC), with owner approval through
-the `crates-io` environment. Never store a registry token or publish locally.
-See the [release procedure](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
+the `crates-io` environment. For future releases, the organization-standard publishing workflow is
+[`.github/workflows/trusted-publishing.yml`](https://github.com/TelemetryWorks/irig106-types/blob/main/.github/workflows/trusted-publishing.yml).
+Never store a registry token or publish locally.
+See the [release procedure and historical 0.1.0 publication record](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
 
 ## Chapter 4 binary time layout
 
