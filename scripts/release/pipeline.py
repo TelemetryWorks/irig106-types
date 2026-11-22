@@ -249,7 +249,47 @@ def known_good():
     summary("Known-good check uses a committed fixture; candidate dry-run artifacts are unsigned.")
 
 
+def verify_attestations(directory, value):
+    root = Path(directory)
+    validate_bundle(root, value)
+    bundle = root / f"{NAME}-{value}.crates.intoto.jsonl"
+    if bundle.is_symlink() or not bundle.is_file() or not bundle.stat().st_size:
+        raise ValueError("Missing frozen provenance bundle")
+    for name in sorted(expected_files(value)):
+        subprocess.run(["gh", "attestation", "verify", str(root / name), "--repo", REPO,
+                        "--bundle", str(bundle), "--signer-workflow", WORKFLOW,
+                        "--source-ref", f"refs/tags/v{value}", "--source-digest", os.environ["RELEASE_COMMIT"],
+                        "--deny-self-hosted-runners", "--predicate-type", "https://slsa.dev/provenance/v1"], check=True)
+
+
+def release_list():
+    pages = json.loads(run("gh", "api", "--paginate", "--slurp", f"repos/{REPO}/releases?per_page=100"))
+    return [item for page in pages for item in page]
+
+
+def semantic_version(value):
+    match = re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?", value)
+    if not match:
+        return None
+    return tuple(int(match[i]) for i in (1, 2, 3)), match[4] is not None
+
+
+def latest_policy(value, releases):
+    """Compare SemVer, never upload time; unpublished drafts are not Latest."""
+    target = semantic_version(value)
+    if target is None:
+        raise ValueError("Invalid semantic release version")
+    core, prerelease = target
+    stable_versions = [core]
+    for release in releases:
+        parsed = semantic_version(release["tag_name"])
+        if parsed and not parsed[1] and not release.get("draft") and not release.get("prerelease"):
+            stable_versions.append(parsed[0])
+    return prerelease, not prerelease and core == max(stable_versions)
+
+
 def prepare(directory, value, toolchain):
+    verify_attestations(directory, value)
     repackage(directory, value, toolchain)
     existing = registry_metadata(value)
     if existing is not None:
@@ -269,17 +309,14 @@ def registry_wait(directory, value):
 
 def release_assets(directory, value):
     root = Path(directory).resolve()
-    validate_bundle(root, value)
+    verify_attestations(root, value)
     bundle = root / f"{NAME}-{value}.crates.intoto.jsonl"
-    if bundle.is_symlink() or not bundle.is_file() or not bundle.stat().st_size:
-        raise ValueError("Missing frozen provenance bundle")
     tag = f"v{value}"
     if tag_commit(tag) != os.environ["RELEASE_COMMIT"]:
         raise ValueError("Remote tag moved from the gate-verified commit")
     notes, title = release_record(value)
     # The list endpoint includes drafts that a tag lookup may not expose.
-    pages = json.loads(run("gh", "api", "--paginate", "--slurp", f"repos/{REPO}/releases?per_page=100"))
-    matches = [item for page in pages for item in page if item["tag_name"] == tag]
+    matches = [item for item in release_list() if item["tag_name"] == tag]
     if len(matches) > 1:
         raise ValueError("Multiple Releases for the tag")
     if matches:
@@ -287,13 +324,17 @@ def release_assets(directory, value):
         if existing["name"] != title or (existing.get("body") or "").replace("\r\n", "\n").strip() != notes.read_text().strip():
             raise ValueError("Existing Release title/body differs from committed notes")
     else:
-        subprocess.run(["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", "--draft",
-                        "--latest=false", "--target", os.environ["RELEASE_COMMIT"],
-                        "--title", title, "--notes-file", str(notes)], check=True)
+        prerelease, _ = latest_policy(value, [])
+        command = ["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", "--draft",
+                   # Drafts cannot be Latest; select Latest explicitly when publishing below.
+                   "--latest=false", "--target", os.environ["RELEASE_COMMIT"],
+                   "--title", title, "--notes-file", str(notes)]
+        if prerelease:
+            command.append("--prerelease")
+        subprocess.run(command, check=True)
     # Use the numeric release/asset APIs: tag lookup can hide a resumed draft.
     if not matches:
-        pages = json.loads(run("gh", "api", "--paginate", "--slurp", f"repos/{REPO}/releases?per_page=100"))
-        matches = [item for page in pages for item in page if item["tag_name"] == tag]
+        matches = [item for item in release_list() if item["tag_name"] == tag]
     if len(matches) != 1:
         raise ValueError("Created draft could not be uniquely identified")
     release = matches[0]
@@ -315,26 +356,20 @@ def release_assets(directory, value):
                             f"https://uploads.github.com/repos/{REPO}/releases/{release['id']}/assets?name={urllib.parse.quote(name, safe='')}",
                             "-H", "Content-Type: application/octet-stream", "--input", str(root / name)],
                            check=True, stdout=subprocess.DEVNULL)
-    if release["draft"]:
-        if tag_commit(tag) != os.environ["RELEASE_COMMIT"]:
-            raise ValueError("Remote tag moved before publishing the draft")
-        subprocess.run(["gh", "api", "--method", "PATCH", f"repos/{REPO}/releases/{release['id']}",
-                        "--input", "-"], input=json.dumps({"draft": False, "make_latest": "false"}),
-                       text=True, check=True, stdout=subprocess.DEVNULL)
+    # Refresh after asset transfer: an older late upload must not take Latest.
+    prerelease, latest = latest_policy(value, release_list())
+    if tag_commit(tag) != os.environ["RELEASE_COMMIT"]:
+        raise ValueError("Remote tag moved before publishing the release metadata")
+    subprocess.run(["gh", "api", "--method", "PATCH", f"repos/{REPO}/releases/{release['id']}",
+                    "--input", "-"], input=json.dumps({"draft": False, "prerelease": prerelease,
+                                                     "make_latest": str(latest).lower()}),
+                   text=True, check=True, stdout=subprocess.DEVNULL)
 
 
 def verify_publication(directory, value):
     root = Path(directory)
-    validate_bundle(root, value)
+    verify_attestations(root, value)
     registry_compare(value, root / f"{NAME}-{value}.crate")
-    bundle = root / f"{NAME}-{value}.crates.intoto.jsonl"
-    if bundle.is_symlink() or not bundle.is_file() or not bundle.stat().st_size:
-        raise ValueError("Missing provenance bundle")
-    for name in sorted(expected_files(value)):
-        subprocess.run(["gh", "attestation", "verify", str(root / name), "--repo", REPO,
-                        "--bundle", str(bundle), "--signer-workflow", WORKFLOW,
-                        "--source-ref", f"refs/tags/v{value}", "--source-digest", os.environ["RELEASE_COMMIT"],
-                        "--deny-self-hosted-runners", "--predicate-type", "https://slsa.dev/provenance/v1"], check=True)
     for attempt in range(10):
         raw = http_get(f"https://docs.rs/crate/{NAME}/{value}/status.json")
         if raw:

@@ -46,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Evaluate release requirements
@@ -113,7 +114,10 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ needs.gate.outputs.version }}
-          path: ${{ runner.temp }}/release-artifacts/
+          path: |
+            ${{ runner.temp }}/release-artifacts/irig106-types-${{ needs.gate.outputs.version }}.crate
+            ${{ runner.temp }}/release-artifacts/sbom.cdx.json
+            ${{ runner.temp }}/release-artifacts/SHA256SUMS
           if-no-files-found: error
           retention-days: 90
 
@@ -191,7 +195,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ needs.gate.outputs.version }}-attestations
-          path: ${{ runner.temp }}/release-attestations/
+          path: ${{ runner.temp }}/release-attestations/irig106-types-${{ needs.gate.outputs.version }}.crates.intoto.jsonl
           if-no-files-found: error
           retention-days: 90
 
@@ -212,11 +216,14 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-${{ needs.gate.outputs.version }}
+          pattern: release-${{ needs.gate.outputs.version }}{,-attestations}
+          merge-multiple: true
           path: ${{ runner.temp }}/release-artifacts
-      - name: Validate and repackage without compiling; compare existing versions
+      - name: Verify provenance, repackage without compiling, compare existing versions
         id: prepare
         env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.gate.outputs.commit }}
           VERSION: ${{ needs.gate.outputs.version }}
           RUST_VERSION: ${{ needs.build.outputs.rust-version }}
         run: |
@@ -252,10 +259,10 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: release-${{ needs.gate.outputs.version }}*
+          pattern: release-${{ needs.gate.outputs.version }}{,-attestations}
           merge-multiple: true
           path: ${{ runner.temp }}/release-artifacts
-      - name: Retain immutable evidence with committed release notes
+      - name: Verify provenance and retain immutable evidence with committed notes
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ needs.gate.outputs.commit }}
@@ -275,11 +282,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-${{ needs.gate.outputs.version }}{,-attestations}
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-artifacts
       - name: Verify attached files, registry identity, attestations and docs.rs
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ needs.gate.outputs.commit }}
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
-          gh release download "v$VERSION" --repo TelemetryWorks/irig106-types --dir "$RUNNER_TEMP/release-artifacts"
-          python3 scripts/release/pipeline.py verify --directory "$RUNNER_TEMP/release-artifacts" --version "$VERSION"
+          gh release download "v$VERSION" --repo TelemetryWorks/irig106-types --dir "$RUNNER_TEMP/published-artifacts"
+          for file in "irig106-types-$VERSION.crate" sbom.cdx.json SHA256SUMS "irig106-types-$VERSION.crates.intoto.jsonl"; do
+            cmp "$RUNNER_TEMP/release-artifacts/$file" "$RUNNER_TEMP/published-artifacts/$file"
+          done
+          python3 scripts/release/pipeline.py verify --directory "$RUNNER_TEMP/published-artifacts" --version "$VERSION"

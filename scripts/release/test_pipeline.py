@@ -197,7 +197,7 @@ class ReleaseControls(unittest.TestCase):
                 pipeline.repackage(self.artifacts, self.value, "1.99.1")
 
     def test_prepare_skips_only_matching_existing_registry_bytes(self):
-        with patch.object(pipeline, "repackage"), patch.object(pipeline, "registry_metadata", return_value={}), patch.object(pipeline, "registry_compare") as comparison, patch.object(pipeline, "output") as out:
+        with patch.object(pipeline, "verify_attestations"), patch.object(pipeline, "repackage"), patch.object(pipeline, "registry_metadata", return_value={}), patch.object(pipeline, "registry_compare") as comparison, patch.object(pipeline, "output") as out:
             pipeline.prepare(self.artifacts, self.value, "1.99.1")
             comparison.assert_called_once()
             self.assertEqual(out.call_args.kwargs, {"upload": "false"})
@@ -254,7 +254,7 @@ class ReleaseControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Release gate rejected"):
             self.tag_run(api_commit="c" * 40)
 
-    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None):
+    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=()):
         bundle = f"irig106-types-{self.value}.crates.intoto.jsonl"
         (self.artifacts / bundle).write_text('{}\n')
         path = self.make_record()
@@ -270,18 +270,22 @@ class ReleaseControls(unittest.TestCase):
         def fake_run(*args, **kwargs):
             if args[0] == "gh":
                 reads.append(True)
-                return json.dumps([[]] if new and len(reads) == 1 else [[metadata]])
+                return json.dumps([list(other_releases) if new and len(reads) == 1 else [metadata, *other_releases]])
             return path.read_text().strip()
         def asset_bytes(args, **kwargs):
             index = int(args[2].rsplit("/", 1)[1])
             return b"changed" if mismatch else (self.artifacts / names[index]).read_bytes()
         with patch.dict(os.environ, {"RELEASE_COMMIT": "a" * 40}), \
-             patch.object(pipeline, "tag_commit", return_value=("b" if moved else "a") * 40), \
+             patch.object(pipeline, "verify_attestations") as signatures, \
+             patch.object(pipeline, "tag_commit", return_value=("b" if moved else "a") * 40,
+                          side_effect=["a" * 40, "b" * 40] if moved_after_assets else None) as tags, \
              patch.object(pipeline, "run", side_effect=fake_run), \
              patch.object(pipeline.subprocess, "check_output", side_effect=asset_bytes), \
              patch.object(pipeline.subprocess, "run") as mutations:
             self.release_mutations = mutations
+            self.release_tag_checks = tags
             pipeline.release_assets(self.artifacts, self.value)
+            signatures.assert_called_once_with(self.artifacts.resolve(), self.value)
             return mutations.call_args_list
 
     def test_new_release_requires_existing_tag_and_committed_notes(self):
@@ -302,8 +306,11 @@ class ReleaseControls(unittest.TestCase):
             with self.assertRaises(ValueError):
                 pipeline.version()
 
-    def test_existing_release_assets_retained_without_writes(self):
-        self.assertEqual(self.release_case(), [])
+    def test_existing_release_assets_retained_without_asset_writes(self):
+        calls = self.release_case()
+        self.assertEqual(len(calls), 1)
+        self.assertIn("PATCH", calls[0].args[0])
+        self.assertEqual(json.loads(calls[0].kwargs["input"])["make_latest"], "true")
 
     def test_existing_asset_mismatch_rejected(self):
         with self.assertRaises(ValueError):
@@ -319,14 +326,84 @@ class ReleaseControls(unittest.TestCase):
 
     def test_missing_release_assets_uploaded_without_clobber(self):
         calls = self.release_case(missing=True)
-        self.assertEqual(len(calls), 4)
-        self.assertTrue(all("POST" in call.args[0] and "--clobber" not in call.args[0] for call in calls))
+        self.assertEqual(len(calls), 5)
+        self.assertTrue(all("POST" in call.args[0] and "--clobber" not in call.args[0] for call in calls[:-1]))
+        self.assertIn("PATCH", calls[-1].args[0])
 
     def test_resumed_draft_uses_numeric_api(self):
         calls = self.release_case(draft=True)
         self.assertEqual(len(calls), 1)
         self.assertIn("PATCH", calls[0].args[0])
         self.assertIn("releases/10", calls[0].args[0][-3])
+
+    def test_second_tag_move_check_blocks_undrafting(self):
+        with self.assertRaisesRegex(ValueError, "Remote tag moved before publishing"):
+            self.release_case(draft=True, moved_after_assets=True)
+        self.assertEqual(self.release_tag_checks.call_count, 2)
+        self.release_mutations.assert_not_called()
+
+    def test_latest_policy_uses_semver_not_creation_time(self):
+        stable = lambda tag, **extra: {"tag_name": tag, "draft": False, "prerelease": False, **extra}
+        cases = [
+            ("0.2.0", [], (False, True)),
+            ("1.10.0", [stable("v1.9.9")], (False, True)),
+            ("1.9.9", [stable("v1.10.0", created_at="2000-01-01")], (False, False)),
+            ("2.0.0-rc.1", [stable("v1.10.0")], (True, False)),
+            ("1.10.0", [stable("v9.0.0-rc.1"), stable("v8.0.0", draft=True)], (False, True)),
+            ("1.10.0+metadata", [stable("v1.10.0+other"), stable("nightly")], (False, True)),
+            ("1.10.0", [stable("v9.0.0", prerelease=True)], (False, True)),
+        ]
+        for value, releases, expected in cases:
+            with self.subTest(value=value, releases=releases):
+                self.assertEqual(pipeline.latest_policy(value, releases), expected)
+
+    def test_older_release_does_not_take_latest(self):
+        calls = self.release_case(other_releases=[{"tag_name": "v1.0.0", "draft": False, "prerelease": False}])
+        self.assertEqual(json.loads(calls[-1].kwargs["input"])["make_latest"], "false")
+
+    def test_prerelease_flag_is_set_and_latest_is_false(self):
+        self.value = "0.2.0-rc.1"
+        self.crate = f"irig106-types-{self.value}.crate"
+        next(self.artifacts.glob('*.crate')).rename(self.artifacts / self.crate)
+        self.manifest()
+        calls = self.release_case(new=True)
+        self.assertIn("--prerelease", calls[0].args[0])
+        payload = json.loads(calls[-1].kwargs["input"])
+        self.assertTrue(payload["prerelease"])
+        self.assertEqual(payload["make_latest"], "false")
+
+    def test_prepare_verifies_before_repackaging(self):
+        steps = []
+        with patch.object(pipeline, "verify_attestations", side_effect=lambda *a: steps.append("verify")), \
+             patch.object(pipeline, "repackage", side_effect=lambda *a: steps.append("repackage")), \
+             patch.object(pipeline, "registry_metadata", return_value=None), patch.object(pipeline, "output") as output:
+            pipeline.prepare(self.artifacts, self.value, "1.99.1")
+        self.assertEqual(steps, ["verify", "repackage"])
+        self.assertEqual(output.call_args.kwargs, {"upload": "true"})
+
+    def test_bad_signature_blocks_prepare_before_upload_decision(self):
+        with patch.object(pipeline, "verify_attestations", side_effect=subprocess.CalledProcessError(1, 'gh')), \
+             patch.object(pipeline, "repackage") as repackage, patch.object(pipeline, "registry_metadata") as registry, \
+             patch.object(pipeline, "output") as output:
+            with self.assertRaises(subprocess.CalledProcessError):
+                pipeline.prepare(self.artifacts, self.value, "1.99.1")
+            repackage.assert_not_called()
+            registry.assert_not_called()
+            output.assert_not_called()
+
+    def test_bad_signature_blocks_release_creation_and_attachment(self):
+        with patch.object(pipeline, "verify_attestations", side_effect=subprocess.CalledProcessError(1, 'gh')), \
+             patch.object(pipeline, "tag_commit") as tag, patch.object(pipeline.subprocess, "run") as mutations:
+            with self.assertRaises(subprocess.CalledProcessError):
+                pipeline.release_assets(self.artifacts, self.value)
+            tag.assert_not_called()
+            mutations.assert_not_called()
+
+    def test_missing_sidecar_fails_before_signature_cli(self):
+        with patch.object(pipeline.subprocess, "run") as verify:
+            with self.assertRaisesRegex(ValueError, "Missing frozen provenance bundle"):
+                pipeline.verify_attestations(self.artifacts, self.value)
+            verify.assert_not_called()
 
     def test_invalid_existing_asset_names_fail_before_mutation(self):
         for kind in ["unexpected", "duplicate"]:

@@ -2,7 +2,7 @@
 
 Owner policy: crates.io Trusted Publishing (OIDC) from
 **`.github/workflows/trusted-publishing.yml`**, named **Trusted publishing**.
-The [organization standard](https://github.com/TelemetryWorks/.github/blob/9bc516d/docs/TRUSTED-PUBLISHING.md)
+The [organization standard](https://github.com/TelemetryWorks/.github/blob/fcceb02/docs/TRUSTED-PUBLISHING.md)
 was adopted by this pilot on 2026-11-22. It supersedes the earlier pipeline's
 post-publication signing and second `release-assets` environment approval.
 Only **Publish to crates.io** uses the protected **`crates-io`** environment;
@@ -156,9 +156,12 @@ that run/tag/commit, using its attestation step/summary or the constrained
 verification below. A green gate alone never substitutes for independent
 workflow identity review. Do not approve discrepancies or bypass protection.
 
-**Nothing compiles in publish.** It validates SHA256SUMS, installs the build's
-exact Rust, and reproduces the archive with `--no-verify` before comparing
-bytes. Existing registry versions skip uploading only after checksum AND byte
+**Nothing compiles in publish.** It downloads both the immutable payload
+and provenance sidecar, validates SHA256SUMS, and runs `gh attestation verify
+--bundle` on the crate and SBOM before any upload/authentication decision.
+Both checks require the expected signer workflow, release tag and exact
+`--source-digest`. It installs the build's exact Rust and reproduces the
+archive with `--no-verify` before comparing bytes. Existing registry versions skip uploading only after checksum AND byte
 comparison. A fresh OIDC action invocation supplies the single-crate wave's
 short-lived token only to `cargo publish --locked --no-verify`. No stored
 registry secret exists. New and existing served archives must equal the
@@ -166,11 +169,24 @@ frozen crate and registry checksum. The short-lived credential is revoked by
 the auth action on job completion.
 
 **GitHub release** has no registry credentials, OIDC, or approval environment.
-It rechecks the tag/commit, uses the committed notes' first heading as title
-and whole file as body, and creates/resumes a draft. Missing assets may be
+It downloads and merges the same payload/sidecar and verifies both signatures
+with the same signer/tag/commit constraints **before creating a Release or
+attaching files**. It rechecks the tag/commit, uses the committed notes' first
+heading as title and whole file as body, and creates/resumes a draft. Missing assets may be
 added; existing assets must compare byte-for-byte and are never clobbered.
-A mismatched title/body or asset fails. **Verify publication** downloads the
-attached files, validates all checksums, compares the registry, verifies both
+A mismatched title/body or asset fails. After transfer it refreshes the Release
+list and compares semantic versions, not upload time: the highest published
+stable version (including the candidate) gets `make_latest: "true"`; older
+stable versions and pre-releases get `"false"`. Pre-releases also set the
+pre-release flag. Draft creation always uses latest=false because a draft
+cannot be Latest; the policy is applied explicitly when publishing its metadata.
+A second tag/commit check immediately before that PATCH blocks un-drafting
+or metadata updates if the tag moved. Metadata selection never permits asset
+replacement.
+
+**Verify publication** downloads both frozen artifacts as well as the actual
+attached files, compares all four files byte-for-byte, validates all checksums,
+compares the registry, and verifies both
 attested files' identity, and waits at most ten docs.rs status observations.
 If success is not observed, it reports **pending/unsuccessful and fails**;
 that is not a passed documentation build. Only a library is shipped, so a
@@ -183,6 +199,13 @@ The immutable Actions payload is `release-X.Y.Z`: crate, `sbom.cdx.json` and
 separate immutable `release-X.Y.Z-attestations` sidecar. Together they are
 one logical release bundle. Later jobs consume the unchanged payload and
 frozen sidecar; no artifact overwrite or substitute bytes is permitted.
+Artifact selection uses `pattern: release-X.Y.Z{,-attestations}` with
+`merge-multiple: true`, selecting exactly the two names rather than other
+prefix matches. Build uploads an explicit three-file payload list and attest
+uploads only the canonical bundle file, so their filenames cannot collide.
+Both consumers verify the bundle before uploading or attaching; an absent or
+invalid sidecar fails closed. Dry-run candidates remain unsigned and use only
+the payload, without entering these tag-only verification/publication paths.
 
 The permanent GitHub Release attaches these four files:
 
