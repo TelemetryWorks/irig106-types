@@ -49,6 +49,10 @@ OIDC issuance, signing or release mutation were exercised.
   absent `docs/releases/v0.1.0.md`. No record was created/backfilled.
 - Actual known-good registry check passes against the committed fixture and
   registry checksum. It is not a comparison of two newly downloaded archives.
+- Local full CI equivalent passed on Rust 1.99.1/MSRV 1.85.0, as did packaged
+  source compilation and SBOM generation. Package audit caught a nested
+  fixture README matching Cargo's basename include pattern; renaming it to
+  PROVENANCE.md keeps repository-only fixture documentation out of the crate.
 - actionlint 1.7.12 and zizmor 1.32.0 regular persona pass the workflow.
   The build/dry-run execution evidence and PR run ID are recorded in the PR.
 
@@ -74,7 +78,12 @@ OIDC issuance, signing or release mutation were exercised.
 5. **The new standard supersedes the former second environment approval.**
    Attestations now precede the only publication approval, and only publish has
    environment crates-io. GitHub release is not an additional deployment gate.
-6. Release-note derivation is concrete: first heading is title, remaining body
+6. **Privileged jobs also check the immutable event context.** They require
+   the gate output AND a push of a `v*` tag, independently of the gate script.
+   PR/manual source can change the gate implementation, so its boolean alone
+   should not be the sole condition for signing/publication. The standard
+   should spell out this defense; its required gate-output condition remains.
+7. Release-note derivation is concrete: first heading is title, remaining body
    equals the dated CHANGELOG entry excluding its heading and link definitions.
    Expanded workspaces fail explicitly until ordered family handling is adopted;
    this root library is the complete current release set.

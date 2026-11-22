@@ -123,7 +123,7 @@ repackages using `cargo package --locked --no-verify`, and compares bytes with
 the frozen build. It separately compares the registry's published **0.1.0**
 with a committed expected archive, pinned at SHA-256
 `2f5ddd5baf4fbc4fa5579bd739561274bc5fc9cc36ba50d610b0442cc0635420`.
-See [fixture provenance](../scripts/release/fixtures/README.md). This is not
+See [fixture provenance](../scripts/release/fixtures/PROVENANCE.md). This is not
 a comparison of two fresh downloads and is not signature verification;
 dry-run candidates and the old fixture are unsigned.
 

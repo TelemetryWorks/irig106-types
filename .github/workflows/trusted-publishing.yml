@@ -147,7 +147,7 @@ jobs:
   attest:
     name: Checksums and attestations
     needs: [gate, build]
-    if: needs.gate.outputs.publish == 'true'
+    if: needs.gate.outputs.publish == 'true' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -198,7 +198,7 @@ jobs:
   publish:
     name: Publish to crates.io
     needs: [gate, build, attest]
-    if: needs.gate.outputs.publish == 'true'
+    if: needs.gate.outputs.publish == 'true' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: crates-io
@@ -240,7 +240,7 @@ jobs:
   github-release:
     name: GitHub release
     needs: [gate, publish]
-    if: needs.gate.outputs.publish == 'true'
+    if: needs.gate.outputs.publish == 'true' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -265,7 +265,7 @@ jobs:
   verify:
     name: Verify publication
     needs: [gate, github-release]
-    if: needs.gate.outputs.publish == 'true'
+    if: needs.gate.outputs.publish == 'true' && github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
