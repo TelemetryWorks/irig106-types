@@ -83,7 +83,13 @@ OIDC issuance, signing or release mutation were exercised.
    PR/manual source can change the gate implementation, so its boolean alone
    should not be the sole condition for signing/publication. The standard
    should spell out this defense; its required gate-output condition remains.
-7. Release-note derivation is concrete: first heading is title, remaining body
+7. **Checkout the immutable event SHA directly.** CodeQL identified the
+   cross-job gate commit output as untrusted for manual dispatch (nine cache
+   poisoning alerts). All job checkouts now use `github.sha`; the gate checks
+   its dereferenced event commit against the annotated tag/main/CI. This also
+   removes a gate-script-controlled source-ref surface without suppressing
+   findings. The gate commit remains evidence, not the checkout authority.
+8. Release-note derivation is concrete: first heading is title, remaining body
    equals the dated CHANGELOG entry excluding its heading and link definitions.
    Expanded workspaces fail explicitly until ordered family handling is adopted;
    this root library is the complete current release set.
