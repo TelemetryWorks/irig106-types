@@ -96,3 +96,34 @@ OIDC issuance, signing or release mutation were exercised.
 
 Nothing in these checks authorizes re-tagging or re-publishing 0.1.0. The first
 real use remains the next independently reviewed, owner-authorized release.
+
+
+## Coordinator decision (a): amendment fcceb02, PR #21 follow-up
+
+The amended standard was read in full. Publish and GitHub release now download
+exactly `release-<version>{,-attestations}` with merge-multiple. Explicit
+producer upload paths select three payload files and one disjoint sidecar
+filename. The pinned download action uses minimatch 10.1.1; an isolated tool
+check of 12 stable/pre-release/build-metadata name cases confirms the pattern
+selects only the two intended artifacts. No npm/project dependency was added.
+
+A shared verifier validates checksums and both payload signatures with bundle,
+repository, signer workflow, source-ref and source-digest constraints. Publish
+calls it before repackaging or emitting an upload decision; GitHub release
+calls it before any mutation. Post-publication verification consumes both
+frozen artifacts and compares every attached file with them before verification.
+No real signature, publishing or attachment path was invoked during this change.
+
+Latest metadata is selected from a fresh, paginated Release list using numeric
+semantic-version precedence. Highest stable gets true; older/pre-release gets
+false and pre-releases carry the pre-release flag. Draft creation uses false;
+finalization applies the computed policy after a second tag/commit check.
+The new second-check test changes the tag only on its second observation and
+asserts no metadata mutation. Additional tests cover bad/missing signatures,
+verification-before-repackaging, multi-digit version ordering, older uploads,
+pre-release metadata and draft exclusion. All 49 control tests pass locally.
+
+The independent tag-push conditions and immutable event-SHA checkouts remain;
+the read-only gate checkout is now explicit too. File name, crates-io environment,
+job graph and permission table are unchanged. Actionlint and regular-persona
+zizmor pass. The updated PR's actual dry-run evidence is recorded in its body.
