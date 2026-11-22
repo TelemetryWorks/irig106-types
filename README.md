@@ -140,9 +140,10 @@ that header field was called Header Version in 106-04 §10.6.1.1.5.
 See [standard evidence, API changes, and adoption steps](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/STANDARD-VALUES-REVIEW.md).
 
 **0.1.0 is the first real release**; 0.0.1 was a name placeholder.
-Releases are published only through GitHub Actions and crates.io Trusted
-Publishing (OIDC), with owner approval through
-the `crates-io` environment. For future releases, the organization-standard publishing workflow is
+Future releases use the organization-standard gate/build/attest/publish/release/verify
+pipeline, with read-only PR dry runs and pre-approval provenance. Releases are
+published only through GitHub Actions and crates.io Trusted Publishing (OIDC),
+with owner approval through the `crates-io` environment. The publishing workflow is
 [`.github/workflows/trusted-publishing.yml`](https://github.com/TelemetryWorks/irig106-types/blob/main/.github/workflows/trusted-publishing.yml).
 Never store a registry token or publish locally.
 See the [release procedure and historical 0.1.0 publication record](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/RELEASING.md).
