@@ -93,6 +93,8 @@ def ci_succeeded(pages, commit):
 
 def tag_commit(tag):
     obj = gh_api(f"repos/{REPO}/git/ref/tags/{tag}")["object"]
+    if obj["type"] != "tag":
+        raise ValueError("Remote release tag must be annotated")
     for _ in range(8):
         if obj["type"] != "tag":
             break
@@ -123,6 +125,11 @@ def gate():
                 findings.append("Release tag must be annotated")
             if run("git", "rev-parse", f"refs/tags/{tag}^{{commit}}") != commit:
                 findings.append("Checkout must equal the tagged commit")
+            try:
+                if tag_commit(tag) != commit:
+                    findings.append("Remote annotated tag does not match the release commit")
+            except ValueError as error:
+                findings.append(str(error))
         if run("git", "rev-parse", os.environ["GITHUB_SHA"] + "^{commit}") != commit:
             findings.append("Checkout differs from the event commit")
         if subprocess.run(["git", "merge-base", "--is-ancestor", commit, "origin/main"]).returncode:
