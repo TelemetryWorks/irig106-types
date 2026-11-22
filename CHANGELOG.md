@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Weekly OpenSSF Scorecard publishing and SARIF, workflow security checks with zizmor, and repository/package badges.
-- Release-workflow SLSA provenance and a CycloneDX SBOM bound to the exact crates.io archive, with downloadable verification bundles and online/offline verification instructions. Every release retains the evidence as permanent GitHub Release assets via the separate environment-gated `release-assets` job, with retry-safe comparison of existing assets and both offline and durable online verification paths. These apply to future releases using the updated workflow; existing releases are not retroactively attested.
+- Organization-standard Trusted publishing gate/build/attest/publish/GitHub release/verification pipeline: read-only PR/manual publish-path checks, pinned known-good registry fixture, frozen artifacts, pre-approval provenance for crate and SBOM, and non-compiling publication. Only publish uses the approval environment; permanent GitHub Release assets are never replaced. The dated CHANGELOG and committed release-notes gate applies to the next authorized release; 0.1.0 is not re-released or retroactively attested.
 
 ### Changed
 
