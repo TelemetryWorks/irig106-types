@@ -131,9 +131,13 @@ class ReleaseControls(unittest.TestCase):
                 pipeline.gate()
                 self.assertEqual(out.call_args.kwargs["publish"], "false")
 
-    def tag_run(self, kind="tag", tag="v0.2.0", ci=True, ancestry=0, notes=True):
+    def tag_run(self, kind="tag", tag="v0.2.0", ci=True, ancestry=0, notes=True, api_kind="tag", api_commit="a" * 40):
         def fake_run(*args, **kwargs):
             if args[0] == "gh":
+                if "/git/ref/tags/" in args[-1]:
+                    return json.dumps({"object": {"type": api_kind, "sha": "b" * 40}})
+                if "/git/tags/" in args[-1]:
+                    return json.dumps({"object": {"type": "commit", "sha": api_commit}})
                 return json.dumps([{"workflow_runs": [{"head_sha": "a" * 40, "path": ".github/workflows/ci.yml", "conclusion": "success" if ci else "failure", "event": "push", "head_branch": "main"}]}])
             if args[1] == "cat-file":
                 return kind
@@ -169,6 +173,17 @@ class ReleaseControls(unittest.TestCase):
         with patch.object(pipeline, "registry_metadata", return_value={"checksum": hashlib.sha256(raw).hexdigest()}), patch.object(pipeline, "http_get", return_value=raw), contextlib.redirect_stdout(io.StringIO()):
             pipeline.registry_compare(self.value, self.artifacts / self.crate)
 
+    def test_registry_checksum_rejected_even_when_archive_bytes_match(self):
+        raw = (self.artifacts / self.crate).read_bytes()
+        metadata = json.dumps({"version": {"num": self.value, "checksum": "0" * 64}}).encode()
+        with patch.object(pipeline, "http_get", side_effect=[metadata, raw]) as requests:
+            with self.assertRaisesRegex(ValueError, "does not match registry checksum"):
+                pipeline.registry_compare(self.value, self.artifacts / self.crate)
+            self.assertEqual([call.args[0] for call in requests.call_args_list], [
+                f"https://crates.io/api/v1/crates/{pipeline.NAME}/{self.value}",
+                f"https://crates.io/api/v1/crates/{pipeline.NAME}/{self.value}/download",
+            ])
+
     def test_repackage_never_compiles(self):
         candidate = Path(f"target/package/{self.crate}")
         candidate.parent.mkdir(parents=True)
@@ -198,7 +213,48 @@ class ReleaseControls(unittest.TestCase):
         fixture = Path(pipeline.__file__).parent / "fixtures/irig106-types-0.1.0.crate"
         self.assertEqual(pipeline.digest(fixture), "2f5ddd5baf4fbc4fa5579bd739561274bc5fc9cc36ba50d610b0442cc0635420")
 
-    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False):
+    def test_known_good_digest_constant_is_pinned(self):
+        self.assertEqual(pipeline.KNOWN_SHA256, "2f5ddd5baf4fbc4fa5579bd739561274bc5fc9cc36ba50d610b0442cc0635420")
+        with patch.object(pipeline, "KNOWN_SHA256", "0" * 64), \
+             patch.object(pipeline, "registry_compare") as comparison:
+            with self.assertRaisesRegex(ValueError, "Pinned known-good fixture digest mismatch"):
+                pipeline.known_good()
+            comparison.assert_not_called()
+
+    def test_known_good_rejects_changed_fixture_before_registry_access(self):
+        with patch.object(pipeline, "digest", return_value="0" * 64), \
+             patch.object(pipeline, "registry_compare") as comparison:
+            with self.assertRaisesRegex(ValueError, "Pinned known-good fixture digest mismatch"):
+                pipeline.known_good()
+            comparison.assert_not_called()
+
+    def test_api_tag_must_be_annotated(self):
+        path = f"repos/{pipeline.REPO}/git/ref/tags/v{self.value}"
+        with patch.object(pipeline, "gh_api", return_value={"object": {"type": "commit", "sha": "a" * 40}}) as api:
+            with self.assertRaisesRegex(ValueError, "must be annotated"):
+                pipeline.tag_commit(f"v{self.value}")
+            api.assert_called_once_with(path)
+
+    def test_api_annotated_tag_resolves_to_commit(self):
+        with patch.object(pipeline, "gh_api", side_effect=[
+            {"object": {"type": "tag", "sha": "b" * 40}},
+            {"object": {"type": "commit", "sha": "a" * 40}},
+        ]) as api:
+            self.assertEqual(pipeline.tag_commit(f"v{self.value}"), "a" * 40)
+            self.assertEqual([c.args[0] for c in api.call_args_list], [
+                f"repos/{pipeline.REPO}/git/ref/tags/v{self.value}",
+                f"repos/{pipeline.REPO}/git/tags/{'b' * 40}",
+            ])
+
+    def test_gate_rejects_lightweight_api_tag_despite_local_annotation(self):
+        with self.assertRaisesRegex(ValueError, "Release gate rejected"):
+            self.tag_run(api_kind="commit")
+
+    def test_gate_rejects_api_tag_pointing_to_another_commit(self):
+        with self.assertRaisesRegex(ValueError, "Release gate rejected"):
+            self.tag_run(api_commit="c" * 40)
+
+    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None):
         bundle = f"irig106-types-{self.value}.crates.intoto.jsonl"
         (self.artifacts / bundle).write_text('{}\n')
         path = self.make_record()
@@ -206,6 +262,10 @@ class ReleaseControls(unittest.TestCase):
         metadata = {"id": 10, "tag_name": f"v{self.value}", "name": f"irig106-types {self.value}",
                     "body": "wrong" if wrong_body else path.read_text(), "draft": draft or new,
                     "assets": [] if missing else [{"name": name, "id": i} for i, name in enumerate(names)]}
+        if invalid_assets == "unexpected":
+            metadata["assets"].append({"name": "unexpected.crate", "id": 99})
+        elif invalid_assets == "duplicate":
+            metadata["assets"].append(dict(metadata["assets"][0], id=99))
         reads = []
         def fake_run(*args, **kwargs):
             if args[0] == "gh":
@@ -220,6 +280,7 @@ class ReleaseControls(unittest.TestCase):
              patch.object(pipeline, "run", side_effect=fake_run), \
              patch.object(pipeline.subprocess, "check_output", side_effect=asset_bytes), \
              patch.object(pipeline.subprocess, "run") as mutations:
+            self.release_mutations = mutations
             pipeline.release_assets(self.artifacts, self.value)
             return mutations.call_args_list
 
@@ -266,6 +327,31 @@ class ReleaseControls(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("PATCH", calls[0].args[0])
         self.assertIn("releases/10", calls[0].args[0][-3])
+
+    def test_invalid_existing_asset_names_fail_before_mutation(self):
+        for kind in ["unexpected", "duplicate"]:
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, "Duplicate/unexpected existing Release assets"):
+                    self.release_case(invalid_assets=kind)
+                self.release_mutations.assert_not_called()
+
+    def test_verification_binds_each_attested_file_to_release_commit(self):
+        (self.artifacts / f"irig106-types-{self.value}.crates.intoto.jsonl").write_text('{}\n')
+        commit = "1234" * 10
+        with patch.object(pipeline, "registry_compare"), patch.object(pipeline.subprocess, "run") as verify, \
+             patch.object(pipeline, "http_get", return_value=b'{"version":"0.2.0","doc_status":true}'), \
+             patch.dict(os.environ, {"RELEASE_COMMIT": commit}), contextlib.redirect_stdout(io.StringIO()):
+            pipeline.verify_publication(self.artifacts, self.value)
+        self.assertEqual(verify.call_count, 2)
+        self.assertEqual({Path(c.args[0][3]).name for c in verify.call_args_list}, pipeline.expected_files(self.value))
+        for call in verify.call_args_list:
+            command = call.args[0]
+            self.assertEqual(command[:3], ["gh", "attestation", "verify"])
+            self.assertEqual(command.count("--source-digest"), 1)
+            self.assertEqual(command[command.index("--source-digest") + 1], commit)
+            self.assertEqual(command[command.index("--source-ref") + 1], f"refs/tags/v{self.value}")
+            self.assertEqual(command[command.index("--signer-workflow") + 1], pipeline.WORKFLOW)
+            self.assertTrue(call.kwargs["check"])
 
     def test_docsrs_pending_never_passes(self):
         (self.artifacts / f"irig106-types-{self.value}.crates.intoto.jsonl").write_text('{}\n')
