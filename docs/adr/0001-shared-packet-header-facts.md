@@ -1,6 +1,6 @@
 # 0001 — Shared packet-header facts
 
-Status: accepted (owner, 2026-11-23); detailed API requirements await PR review.
+Status: accepted (owner, 2026-11-23); detailed requirements approved in PR #25 at `ae760b8`.
 
 The shared plain packet-facts type lives in `irig106-types`. Core produces
 these header facts, an orchestrator passes them on, and the TMATS setup
@@ -21,5 +21,5 @@ about the current core reader or measured performance.
 The addition belongs to the next release, 0.2.0, whose timing the owner
 decides. This decision does not authorize a version bump, tag or release.
 
-The proposed contract and source references are in
+The contract and source references are in
 [PacketFacts requirements](../PACKET-FACTS.md).

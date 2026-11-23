@@ -24,9 +24,9 @@ field. Their limited checks do not make a packet conforming.
 As of 2026-11-23, `irig106-core` is the only reverse dependency on crates.io;
 `irig106-time` uses a repository dependency. The remaining rows describe planned
 or intended roles, not current dependencies. The
-[PacketFacts design](PACKET-FACTS.md) specifies that planned seam without adding
-an API. A plain value should cross the boundary; a dependency on core should
-not be required just to name it.
+[PacketFacts contract](PACKET-FACTS.md) now has a shared implementation here;
+core adapters, TMATS assembly and orchestration remain planned. A dependency on
+core is not required just to name the value.
 
 ## 2. Choose the counter and the unit
 
@@ -190,3 +190,46 @@ cargo test --doc --no-default-features
 ```
 
 Guide Rust examples are also compiled during the CI Documentation job.
+
+## 7. Pass header facts and borrow DATA separately
+
+`PacketFacts` contains only primary-header observations and byte provenance
+(Chapter 11 §11.2.1.1 / Table 11-2). Construct it from the producer's existing
+observations; this is not packet parsing or proof of trust. All nine values are
+required by the frozen V1 constructor. The call below is an independent example,
+not a released core adapter or TMATS assembler API:
+
+```rust
+use irig106_types::{KnownDataType, PacketFacts, Rtc};
+
+let facts = PacketFacts::new_v1(100, Rtc::from_raw(42), 44, 8, 7, 1, 9, 255, 0x80);
+let data = [0x0E, 0, 0, 0, b'S', b':', b'a', b';'];
+fn consume<'a>(facts: &PacketFacts, data: &'a [u8]) -> (u64, &'a [u8]) {
+    (facts.byte_offset(), data)
+}
+assert_eq!(facts.known_data_type(), Some(KnownDataType::ComputerGeneratedFormat1));
+assert!(facts.has_secondary_header());
+let (offset, borrowed) = consume(&facts, &data);
+assert_eq!(offset, 100);
+assert_eq!(borrowed.as_ptr(), data.as_ptr());
+```
+
+`data_type()` always preserves the raw byte. The named view initially covers
+only 0x01/0x11/0x12; `None` includes valid codes not named by this API. Flag views
+are mechanical: bit 7 secondary presence, bit 6 IPTS source, bit 5 RTC sync error,
+bit 4 overflow, bits 3–2 secondary format, bits 1–0 checksum width (0/1/2/4 bytes).
+Contradictory flags and lengths remain observable; nothing chooses an edition,
+verifies a checksum, recognises a trusted closure marker, or repairs input.
+
+There is no `Default`; non-exhaustiveness prevents external struct literals.
+`new_v1` will not grow parameters: future fields must represent absence explicitly
+for old callers, with a new constructor to supply them. All size changes need
+review. See [constructor evolution](PACKET-FACTS.md#constructor-evolution-implementation-decision-2026-11-23).
+
+DATA must exclude headers and packet trailer filler/checksum and include its
+CSDW where applicable. Check capture bounds and external integrity evidence;
+`data_length()` is a declaration, not proof all bytes were captured. Keep the
+borrow within the backing buffer's lifetime. Context such as session start,
+trust/gaps, edition, joining phases and closure/completeness belongs outside
+facts. Borrowing this value allocates nothing, but it does not make core 0.1's
+owned DATA capture allocation-free or establish end-to-end performance.

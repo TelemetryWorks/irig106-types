@@ -27,6 +27,19 @@ jobs:
       - run: cargo test --no-default-features
       - run: cargo test --features serde
 
+  layout-arm:
+    name: PacketFacts layout (aarch64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master (stable)
+        with:
+          toolchain: stable
+      - run: test "$(uname -m)" = aarch64
+      - run: cargo test --locked --no-default-features --test packet_facts_layout -- --nocapture
+
   msrv:
     name: MSRV Check (1.85.0)
     runs-on: ubuntu-latest
@@ -103,3 +116,5 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - run: cargo build --target wasm32-unknown-unknown --no-default-features
+      # Evaluates the target-size const assertion without requiring a wasm runner.
+      - run: cargo check --locked --target wasm32-unknown-unknown --no-default-features --test packet_facts_layout

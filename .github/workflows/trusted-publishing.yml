@@ -91,6 +91,7 @@ jobs:
           cargo +"$RELEASE_RUST_VERSION" fmt --all -- --check
           RUSTDOCFLAGS='-D warnings -D rustdoc::broken_intra_doc_links' cargo +"$RELEASE_RUST_VERSION" doc --locked --no-deps --all-features
           cargo +"$RELEASE_RUST_VERSION" build --locked --target wasm32-unknown-unknown --no-default-features
+          cargo +"$RELEASE_RUST_VERSION" check --locked --target wasm32-unknown-unknown --no-default-features --test packet_facts_layout
       - name: Package and verify packaged source
         run: |
           cargo +"$RELEASE_RUST_VERSION" package --locked --list
