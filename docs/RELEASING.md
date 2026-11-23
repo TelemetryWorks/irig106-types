@@ -172,8 +172,19 @@ the auth action on job completion.
 It downloads and merges the same payload/sidecar and verifies both signatures
 with the same signer/tag/commit constraints **before creating a Release or
 attaching files**. It rechecks the tag/commit, uses the committed notes' first
-heading as title and whole file as body, and creates/resumes a draft. Missing assets may be
-added; existing assets must compare byte-for-byte and are never clobbered.
+heading as title and whole file as body, and creates/resumes a draft. Existing
+drafts are resumed through the releases list. New drafts are created once via
+the API, after verifying the existing annotated tag/commit, with the committed
+notes and explicit draft/pre-release flags. The returned numeric `.id` is
+retained and read through `GET /releases/{id}`; creation never depends on an
+immediate post-create list match. Only a 404 on that ID lookup is retried:
+up to five GETs, 30-second request timeouts, and 1/2/4/8-second backoff
+(15 seconds total scheduled delay). Create is never retried. Exhaustion,
+permission errors, invalid IDs, or mismatched tag/draft/title/body metadata
+fail before attachment. Existing-draft resume does not poll or sleep.
+
+Missing assets may be added; existing assets must compare byte-for-byte and
+are never clobbered.
 A mismatched title/body or asset fails. After transfer it refreshes the Release
 list and compares semantic versions, not upload time: the highest published
 stable version (including the candidate) gets `make_latest: "true"`; older
@@ -276,3 +287,17 @@ repository, filename and environment; only-mode; environment reviewer,
 no-bypass and tag-only deployment protection; independently reviewed main,
 CI and records; and the complete single-library release set. Read-only
 checks during adoption do not certify the private publisher registration.
+
+
+## Draft-discovery hardening (2026-11-23)
+
+The [core release incident and fix](https://github.com/TelemetryWorks/irig106-core/pull/14)
+exposed the base pipeline's one-shot list lookup after successful draft creation
+(run 45118531760). Read-after-write visibility lag is consistent with that
+failure; historical response bodies were not logged. Types shared that lookup.
+The types follow-up retains the API creation response's ID and retries only
+reading that specific ID, while preserving list-based resume. Logs retain the
+new ID so an owner can identify a draft even if lookup exhausts its deadline.
+An uncertain/failed create is never automatically repeated; inspect existing
+drafts before owner-reviewed recovery. This change does not authorize any
+release rerun, tag change or registry operation.
