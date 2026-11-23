@@ -1,6 +1,6 @@
 # PacketFacts design and requirements
 
-Status: **design approved in PR #25; implementation in progress**.
+Status: **design approved in PR #25; shared types implemented, integrations planned**.
 Owner boundary decision: [ADR-0001](adr/0001-shared-packet-header-facts.md),
 2026-11-23. This adds shared vocabulary; the next release is **0.2.0**, when
 the owner decides. Cargo stays at 0.1.0 in this implementation PR; no release is made.
@@ -22,11 +22,11 @@ A cheap scalar copy is permitted; the normal synchronous seam borrows both.
 | Time | Time packet + qualified context → time results | Payload interpretation and correlation; no dependency on core or TMATS |
 | Decode | Selected data + qualified metadata/time answers → decoded values | Payload decoding; no general per-data-packet TMATS callback |
 
-All new seams above remain planned. PacketFacts is neither core's `Header`
-nor evidence that a packet is valid. It performs no parsing, I/O, checksum
+The shared types are implemented; the producer/consumer integrations above
+remain planned. PacketFacts is neither core's `Header` nor evidence that a packet is valid. It performs no parsing, I/O, checksum
 verification, recovery, session tracking, policy selection or semantic decoding.
 
-## 2. Proposed value contract
+## 2. Value contract
 
 **PF-001 — Representation.** Add a fully documented, `#[non_exhaustive]`
 `PacketFacts`, deriving `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq` and `Hash`.
@@ -148,7 +148,7 @@ budgeted ownership in the assembler or moving a buffer outside this value.
 | Separate DATA/trust inputs | `Packet::body_prefix`, `ranges`, `secondary_integrity`, recovery evidence |
 
 Core's future adapter fills facts from those observations after its own
-structural checks. This PR changes neither core nor its public API. Current
+structural checks. This implementation changes neither core nor its public API. Current
 core 0.1 uses an owned `Vec` DATA prefix and can allocate per capture; borrowing
 `&packet.body_prefix` does not make that reader allocation-free or guarantee
 full DATA. The planned reusable-buffer core API is a separate integration.
@@ -165,7 +165,7 @@ Modulo +1 alone can alias after 256 omitted packets. The producer/orchestrator
 must retain/report that evidence separately using bounded state, without a
 general per-data-packet TMATS callback after the initial phase. The exact
 sideband interface is an integration requirement, not a new fact, silent
-assumption of continuity or implementation in this PR.
+assumption of continuity or implementation in types.
 
 **PF-008 — Closure and initial ordering (INT-045).** Deliver in physical
 stream order; never sort by RTC, channel, sequence or worker completion.
@@ -193,7 +193,7 @@ revisions, checksums and adoption withholding. No such policy enters types.
 
 **PF-009 — Performance.** Follow pipeline.md's owner-approved target:
 one data-type classification/dispatch per packet; initial-header observations
-and cheap marker notifications while a candidate is open are explicit
+and cheap marker notifications while a closure-eligible candidate is open are explicit
 exceptions to selective semantic routing. Data otherwise goes only to decode.
 Facts and views allocate nothing; payloads cross libraries as borrowed slices.
 No per-packet allocation on the steady-state path after buffer capacity exists
@@ -204,9 +204,10 @@ types; lifetime/ownership transfer and backpressure remain orchestrator duties.
 Actual performance claims require the pipeline's later throughput/allocation
 benchmarks; a small `Copy` type alone is not performance evidence.
 
-## 4. Tests-first acceptance for the implementation PR
+## 4. Tests-first acceptance
 
-These are planned checks, not executed implementation results:
+These are acceptance requirements; executed evidence is in
+[the verification record](PACKET-FACTS-VERIFICATION.md):
 
 - PF-001/002: compile-time Copy assertion, target size budget, round-trip every
   field's boundaries, no defaulted observations; no-default/MSRV/wasm checks.
@@ -237,14 +238,15 @@ The following links pin the inspected inputs rather than assuming main is fixed:
   owner and independent review at this snapshot. Types supplies observations;
   it does not implement those TMATS semantics.
 - [Pipeline performance design](https://github.com/TelemetryWorks/irig106-docs/blob/db6023940329e07549e30e2052083dcadf025100/src/architecture/pipeline.md#5-performance-design),
-  final irig106-docs PR #4 head requested for this implementation (still open
-  at inspection). It describes planned integrations, selective dispatch and
+  final merged irig106-docs PR #4 head requested for this implementation. It
+  describes planned integrations, selective dispatch and
   the reviewed first-fragment SRCC guards; it is not a performance measurement.
 - Standard PDF above: SHA-256
   `0f63792dcac39f6010df371ee0afc46a396017918f4155cba9ebab6c2d6d263e`,
   matched to the standards archive manifest; inspected header text and tables.
   Older-edition code/format applicability remains explicitly external.
 
-Only the ownership, shape and performance direction are owner decisions in
-ADR-0001. The concrete field/view requirements here are proposed for this PR's
-exact-head review; no future API, benchmark or integration is claimed shipped.
+The ownership, shape and performance direction are owner decisions in
+ADR-0001; field/view requirements were approved in PR #25. This implementation
+adds the shared API without claiming any cross-crate integration, benchmark,
+released 0.2.0 package or TMATS semantic implementation.

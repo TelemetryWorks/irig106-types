@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- PacketFacts ownership ADR and proposed header-only requirements: small Copy facts, separately borrowed DATA, core adapter mapping, and TMATS joining/closure/ordering boundaries. Design only; implementation and owner-timed 0.2.0 remain separate.
+- `packet_facts::{PacketFacts, KnownDataType}`, also re-exported at the crate root: non-exhaustive Copy header-only observations, all nine raw fields supplied through frozen `new_v1`, limited 0x01/0x11/0x12 named view, mechanical flags/checksum-width views, optional serde and separate borrowed DATA. No parsing, heap storage or validation/semantic policy. Target-size tests enforce <=32 bytes on x86_64/aarch64/wasm32. Core/TMATS integration and owner-timed 0.2.0 remain separate; no version bump.
+- PacketFacts ownership ADR, approved requirements, constructor-evolution plan, source pins and tests-first verification/adoption record.
 
 - Complete existing-API documentation and `docs/GUIDE.md`: crate boundaries, consumer roles, units/ranges, standard citations, edition and raw-value caveats. Explicit CI broken-link checks and compiled guide examples preserve documentation coverage without changing API behavior.
 

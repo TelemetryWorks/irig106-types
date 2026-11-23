@@ -6,7 +6,7 @@
 //! repository dependency).
 //!
 //! This crate holds only the *vocabulary* of IRIG 106: counters, wire-level
-//! time representations, time-related enumerations, and unit/epoch newtypes.
+//! time representations, header facts, time-related enumerations, and unit/epoch newtypes.
 //! It performs no I/O and no correlation. Interpretation of these values
 //! (e.g., converting Chapter 4 binary time to an absolute time of day) lives
 //! in the crates that consume them.
@@ -30,7 +30,8 @@
 //! As of 2026-11-23, `irig106-core` is the only reverse dependency on
 //! crates.io; `irig106-time` consumes types through a repository dependency.
 //! The other rows describe planned or intended roles, not current dependencies.
-//! The PacketFacts API for core/TMATS is a separate design and is not defined here.
+//! [`PacketFacts`] now supplies header-only values; core/TMATS adapter integration
+//! remains planned. Its payload bytes are borrowed separately, never stored here.
 //! TMATS and time must not need a dependency on core merely to exchange values.
 //!
 //! ## Reading contracts
@@ -52,6 +53,7 @@
 //!
 //! | Module | Types |
 //! |--------|-------|
+//! | [`packet_facts`] | [`PacketFacts`], [`KnownDataType`] (raw header observations and limited code view) |
 //! | [`rtc`] | [`Rtc`] (48-bit RTC), [`Ertc`] (64-bit extended RTC) |
 //! | [`binary_time`] | [`Ch4BinaryTime`], [`Ieee1588Time`] |
 //! | [`time_enums`] | [`TimeSource`], [`TimeFormat`], [`IrigTimeSource`], [`DateFormat`], [`SecHdrTimeFormat`] |
@@ -90,6 +92,7 @@ extern crate std;
 
 pub mod binary_time;
 pub mod error;
+pub mod packet_facts;
 pub mod rtc;
 pub mod time_enums;
 pub mod units;
@@ -97,6 +100,7 @@ pub mod version;
 
 pub use binary_time::{Ch4BinaryTime, Ieee1588Time};
 pub use error::{Result, TypesError};
+pub use packet_facts::{KnownDataType, PacketFacts};
 pub use rtc::{Ertc, Rtc};
 pub use time_enums::{DateFormat, IrigTimeSource, SecHdrTimeFormat, TimeFormat, TimeSource};
 pub use units::{

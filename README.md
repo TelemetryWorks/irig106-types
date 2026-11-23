@@ -27,6 +27,7 @@ no parsing of whole packets, no correlation.
 
 | Module | Types | Notes |
 |--------|-------|-------|
+| `packet_facts` | `PacketFacts`, `KnownDataType` | Copy header-only observations (32-byte budget); raw routing byte plus limited named view; payload bytes borrowed separately |
 | `rtc` | `Rtc`, `Ertc` | 48-bit RTC (masked, wrap-aware elapsed time) at 100 ns/tick; 64-bit ERTC at 1 ns/tick |
 | `binary_time` | `Ch4BinaryTime`, `Ieee1588Time` | Raw secondary-header / intra-packet time fields |
 | `time_enums` | `TimeSource`, `TimeFormat`, `IrigTimeSource`, `DateFormat`, `SecHdrTimeFormat` | Decoded CSDW / packet-flag fields |
@@ -59,6 +60,30 @@ assert_eq!(start.elapsed_nanos(end), NanosDuration::from_millis(500).unwrap().ge
 let utc = TaiSeconds::new(1_735_689_637).to_unix(TaiUtcOffset::new(37)).unwrap();
 assert_eq!(utc.get(), 1_735_689_600); // 2025-01-01T00:00:00Z
 ```
+
+## Packet header facts
+
+`PacketFacts` carries channel, raw data type/version, sequence, flags, byte
+offset, existing `Rtc`, and declared packet/DATA lengths. It owns no payload
+or heap storage; pass `&PacketFacts` plus a separate borrowed `&[u8]`. Raw
+observations are retained even for inconsistent lengths/flags. Computed views
+name 0x01/0x11/0x12 and expose header flag bits/checksum width without validation,
+recording-edition inference or TMATS/time policy. Other data types remain raw;
+an absent named view does not mean the standard reserves a code.
+
+`PacketFacts::new_v1` requires all nine observations explicitly. That versioned
+signature is frozen: future observations must be explicitly optional/absent for
+V1 callers, with a later constructor to supply them. There is no `Default`.
+Both new types are non-exhaustive, support optional serde, and keep `no_std`
+without `alloc` or new required dependencies. Serde adds no validation, including
+of the existing `Rtc` domain. The size budget is <=32 bytes, checked by native
+x86_64/aarch64 tests and a wasm32 compile-time layout test; no stable ABI is promised.
+
+Core production/orchestrator/TMATS integrations remain planned. See the
+[contract and constructor evolution](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/PACKET-FACTS.md)
+and [verification/adoption record](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/PACKET-FACTS-VERIFICATION.md).
+The next release is 0.2.0 when the owner decides; this addition makes no release
+or version bump, and the published 0.1.0 does not contain PacketFacts.
 
 ## Signed quantities and checked conversions
 
@@ -199,4 +224,5 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 cargo build --target wasm32-unknown-unknown --no-default-features
+cargo check --target wasm32-unknown-unknown --no-default-features --test packet_facts_layout
 ```
