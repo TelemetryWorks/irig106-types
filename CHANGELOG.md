@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PacketFacts ownership ADR and proposed header-only requirements: small Copy facts, separately borrowed DATA, core adapter mapping, and TMATS joining/closure/ordering boundaries. Design only; implementation and owner-timed 0.2.0 remain separate.
+
 - Complete existing-API documentation and `docs/GUIDE.md`: crate boundaries, consumer roles, units/ranges, standard citations, edition and raw-value caveats. Explicit CI broken-link checks and compiled guide examples preserve documentation coverage without changing API behavior.
 
 - Weekly OpenSSF Scorecard publishing and SARIF, workflow security checks with zizmor, and repository/package badges.

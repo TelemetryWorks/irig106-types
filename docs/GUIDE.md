@@ -23,9 +23,10 @@ field. Their limited checks do not make a packet conforming.
 
 As of 2026-11-23, `irig106-core` is the only reverse dependency on crates.io;
 `irig106-time` uses a repository dependency. The remaining rows describe planned
-or intended roles, not current dependencies. The shared PacketFacts type is a separate design;
-this documentation change adds no such API. A plain value should cross the
-boundary; a dependency on core should not be required just to name it.
+or intended roles, not current dependencies. The
+[PacketFacts design](PACKET-FACTS.md) specifies that planned seam without adding
+an API. A plain value should cross the boundary; a dependency on core should
+not be required just to name it.
 
 ## 2. Choose the counter and the unit
 
