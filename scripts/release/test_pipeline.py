@@ -254,23 +254,37 @@ class ReleaseControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Release gate rejected"):
             self.tag_run(api_commit="c" * 40)
 
-    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=()):
+    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=(), id_lag=0, id_status=404, ambiguous=False):
         bundle = f"irig106-types-{self.value}.crates.intoto.jsonl"
         (self.artifacts / bundle).write_text('{}\n')
         path = self.make_record()
         names = sorted(pipeline.expected_files(self.value) | {"SHA256SUMS", bundle})
         metadata = {"id": 10, "tag_name": f"v{self.value}", "name": f"irig106-types {self.value}",
                     "body": "wrong" if wrong_body else path.read_text(), "draft": draft or new,
-                    "assets": [] if missing else [{"name": name, "id": i} for i, name in enumerate(names)]}
+                    "assets": [] if missing or new else [{"name": name, "id": i} for i, name in enumerate(names)]}
         if invalid_assets == "unexpected":
             metadata["assets"].append({"name": "unexpected.crate", "id": 99})
         elif invalid_assets == "duplicate":
             metadata["assets"].append(dict(metadata["assets"][0], id=99))
-        reads = []
+        self.release_creates = []
+        self.release_id_reads = []
+        self.release_list_reads = []
         def fake_run(*args, **kwargs):
             if args[0] == "gh":
-                reads.append(True)
-                return json.dumps([list(other_releases) if new and len(reads) == 1 else [metadata, *other_releases]])
+                if "--method" in args and args[args.index("--method") + 1] == "POST":
+                    self.release_creates.append((args, kwargs))
+                    return json.dumps({"id": 10})
+                if args[2] == f"repos/{pipeline.REPO}/releases/10":
+                    self.release_id_reads.append(args)
+                    if len(self.release_id_reads) <= id_lag:
+                        raise subprocess.CalledProcessError(1, args, stderr=f"gh: lookup failed (HTTP {id_status})")
+                    return json.dumps(metadata)
+                self.release_list_reads.append(args)
+                # New drafts stay absent from the list, even after GET by ID works.
+                items = list(other_releases) if new else [metadata, *other_releases]
+                if ambiguous:
+                    items = [metadata, dict(metadata, id=11)]
+                return json.dumps([items])
             return path.read_text().strip()
         def asset_bytes(args, **kwargs):
             index = int(args[2].rsplit("/", 1)[1])
@@ -281,7 +295,9 @@ class ReleaseControls(unittest.TestCase):
                           side_effect=["a" * 40, "b" * 40] if moved_after_assets else None) as tags, \
              patch.object(pipeline, "run", side_effect=fake_run), \
              patch.object(pipeline.subprocess, "check_output", side_effect=asset_bytes), \
-             patch.object(pipeline.subprocess, "run") as mutations:
+             patch.object(pipeline.subprocess, "run") as mutations, \
+             patch.object(pipeline.time, "sleep") as sleeps:
+            self.release_sleeps = sleeps
             self.release_mutations = mutations
             self.release_tag_checks = tags
             pipeline.release_assets(self.artifacts, self.value)
@@ -290,12 +306,59 @@ class ReleaseControls(unittest.TestCase):
 
     def test_new_release_requires_existing_tag_and_committed_notes(self):
         calls = self.release_case(new=True)
-        command = calls[0].args[0]
-        self.assertEqual(command[:3], ["gh", "release", "create"])
-        self.assertIn("--verify-tag", command)
-        self.assertIn("--notes-file", command)
-        self.assertIn("--draft", command)
+        self.assertEqual(len(self.release_creates), 1)
+        command, options = self.release_creates[0]
+        self.assertEqual(command[:5], ("gh", "api", "--method", "POST", f"repos/{pipeline.REPO}/releases"))
+        payload = json.loads(options["input"])
+        self.assertEqual(payload, {
+            "tag_name": f"v{self.value}", "target_commitish": "a" * 40,
+            "name": f"irig106-types {self.value}",
+            "body": Path(f"docs/releases/v{self.value}.md").read_text(),
+            "draft": True, "prerelease": False, "make_latest": "false",
+        })
+        self.assertEqual(len(self.release_id_reads), 1)
+        self.assertEqual(len(calls), 5) # Four asset uploads and final metadata update.
         self.assertIn("PATCH", calls[-1].args[0])
+
+    def test_created_draft_uses_id_despite_list_visibility_lag(self):
+        calls = self.release_case(new=True)
+        self.assertEqual(len(self.release_creates), 1)
+        self.assertEqual(len(self.release_id_reads), 1)
+        # Initial resume discovery and final Latest selection, not draft rediscovery.
+        self.assertEqual(len(self.release_list_reads), 2)
+        self.release_sleeps.assert_not_called()
+        self.assertEqual(len(calls), 5)
+
+    def test_created_draft_id_lookup_retries_visibility_lag(self):
+        calls = self.release_case(new=True, id_lag=2)
+        self.assertEqual(len(self.release_creates), 1)
+        self.assertEqual(len(self.release_id_reads), 3)
+        self.assertEqual([c.args for c in self.release_sleeps.call_args_list], [(1,), (2,)])
+        self.assertEqual(len(calls), 5)
+
+    def test_created_draft_id_lookup_exhaustion_stops_before_assets(self):
+        with self.assertRaisesRegex(ValueError, "Created draft 10.*5"):
+            self.release_case(new=True, id_lag=5)
+        self.assertEqual(len(self.release_creates), 1)
+        self.assertEqual(len(self.release_id_reads), 5)
+        self.assertEqual([c.args for c in self.release_sleeps.call_args_list], [(1,), (2,), (4,), (8,)])
+        self.release_mutations.assert_not_called()
+
+    def test_created_draft_lookup_permission_error_is_not_retried(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.release_case(new=True, id_lag=1, id_status=403)
+        self.assertEqual(len(self.release_creates), 1)
+        self.assertEqual(len(self.release_id_reads), 1)
+        self.release_sleeps.assert_not_called()
+        self.release_mutations.assert_not_called()
+
+    def test_ambiguous_resume_is_rejected_without_create_or_retry(self):
+        with self.assertRaisesRegex(ValueError, "Multiple Releases"):
+            self.release_case(draft=True, ambiguous=True)
+        self.assertEqual(self.release_creates, [])
+        self.assertEqual(self.release_id_reads, [])
+        self.release_sleeps.assert_not_called()
+        self.release_mutations.assert_not_called()
 
     def test_single_crate_manifest_scope(self):
         Path("Cargo.toml").write_text('[package]\nname="irig106-types"\nversion="0.2.0"\npublish=["crates-io"]\n')
@@ -335,6 +398,9 @@ class ReleaseControls(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("PATCH", calls[0].args[0])
         self.assertIn("releases/10", calls[0].args[0][-3])
+        self.assertEqual(self.release_creates, [])
+        self.assertEqual(self.release_id_reads, [])
+        self.release_sleeps.assert_not_called()
 
     def test_second_tag_move_check_blocks_undrafting(self):
         with self.assertRaisesRegex(ValueError, "Remote tag moved before publishing"):
@@ -367,7 +433,7 @@ class ReleaseControls(unittest.TestCase):
         next(self.artifacts.glob('*.crate')).rename(self.artifacts / self.crate)
         self.manifest()
         calls = self.release_case(new=True)
-        self.assertIn("--prerelease", calls[0].args[0])
+        self.assertTrue(json.loads(self.release_creates[0][1]["input"])["prerelease"])
         payload = json.loads(calls[-1].kwargs["input"])
         self.assertTrue(payload["prerelease"])
         self.assertEqual(payload["make_latest"], "false")
