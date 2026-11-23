@@ -1,6 +1,14 @@
 //! Time-related enumerations decoded from Chapter 10 channel-specific data
 //! words and packet flags.
 //!
+//! Unless an edition note says otherwise, the baseline is IRIG 106-24R1.
+//! CSDW codes: §11.2.3.2 a / Figure 11-12; packet flag codes:
+//! §11.2.1.1 g / Figures 11-4–11-6. All codes are dimensionless.
+//! `from_raw` takes an already extracted field: it never masks to four bits.
+//! Values above 0xF are preserved as `Reserved`, not silently repaired.
+//! Public enum construction and serde do not validate edition applicability
+//! or prevent a caller from constructing `Reserved` with a known code.
+//!
 //! # Requirement Traceability
 //!
 //! | Requirement | Description |
@@ -30,12 +38,21 @@ pub enum TimeSource {
     InternalFromRmm,
     /// No time source (0xF).
     None,
-    /// Reserved or unrecognized value.
+    /// Reserved wire code or out-of-field input, preserved over all `u8` values.
     Reserved(u8),
 }
 
 impl TimeSource {
-    /// Decode the extracted 106-05-and-later SRC field, preserving reserved values.
+    /// Decode a dimensionless SRC nibble using [`TimeSource`]'s code table.
+    ///
+    /// Codes 0, 1, 2, 15 are named; every other `u8` is retained as
+    /// `Reserved`. No nibble masking or 106-04 EXT interpretation occurs.
+    ///
+    /// ```
+    /// use irig106_types::TimeSource;
+    /// assert_eq!(TimeSource::from_raw(3), TimeSource::Reserved(3));
+    /// assert_eq!(TimeSource::from_raw(0xF), TimeSource::None);
+    /// ```
     #[inline]
     pub fn from_raw(val: u8) -> Self {
         match val {
@@ -53,7 +70,8 @@ impl TimeSource {
 /// Decoded from bits \[7:4\] of the Time Data Format 1 CSDW using the
 /// 106-05-and-later mapping. In 106-04 §10.6.3.3, Figure 10-15, FMT
 /// 0x6–0xF is reserved; NONE at 0xF applies from 106-05 onward.
-/// Edition handling belongs to `irig106-time`.
+/// Edition handling belongs to `irig106-time`. Baseline: 106-24R1
+/// §11.2.3.2 a / Figure 11-12; codes 0–5 and 15 are named, 6–14 reserved.
 ///
 /// **Traces:** L3-CSDW-009 ← L2-CSDW-005 ← L1-CSDW-003
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -76,12 +94,15 @@ pub enum TimeFormat {
     /// 106-24R1 §11.2.3.2 a, Figure 11-12. Consumers must not interpret
     /// the payload as a valid time reference.
     None,
-    /// Reserved or unrecognized value.
+    /// Reserved wire code or out-of-field input, preserved over all `u8` values.
     Reserved(u8),
 }
 
 impl TimeFormat {
-    /// Decode the extracted FMT field using the 106-05-and-later mapping.
+    /// Decode a dimensionless FMT nibble using [`TimeFormat`]'s code table.
+    ///
+    /// Codes 0–5 and 15 are named; all other `u8` values are retained as
+    /// `Reserved`. This neither masks the input nor validates a payload.
     #[inline]
     pub fn from_raw(val: u8) -> Self {
         match val {
@@ -128,7 +149,10 @@ pub enum IrigTimeSource {
 }
 
 impl IrigTimeSource {
-    /// Decode an extracted ITS field, without deciding its applicability.
+    /// Decode a dimensionless ITS nibble using [`IrigTimeSource`]'s table.
+    ///
+    /// Codes 0–7 are named; all other `u8` values are preserved as
+    /// `Reserved`. No masking or edition/format applicability check occurs.
     #[inline]
     pub fn from_raw(val: u8) -> Self {
         match val {
@@ -145,7 +169,11 @@ impl IrigTimeSource {
     }
 }
 
-/// Date representation format in the time message.
+/// DATE bit of the Format 1 time CSDW; a dimensionless two-value selector.
+///
+/// IRIG 106-24R1 §11.2.3.2 a / Figure 11-12, bit 9. The caller extracts
+/// the bit and selects a variant; no calendar fields are parsed or validated.
+/// The 106-04 predecessor is Figure 10-15 (§10.6.3.3).
 ///
 /// **Traces:** L3-CSDW-010 ← L2-CSDW-007 ← L1-CSDW-005
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -160,24 +188,39 @@ pub enum DateFormat {
 /// Time format discriminant derived from Packet Flag bits \[3:2\].
 ///
 /// Selects the layout of the secondary header time and of intra-packet
-/// time stamps.
+/// time stamps when flag bit 6 selects secondary-header time (the presence
+/// of a secondary header itself is controlled separately by bit 7).
+/// IRIG 106-24R1 §11.2.1.1 g, Figures 11-4–11-6, and §11.2.1.3 b.
+/// Older editions can reserve formats later assigned; the caller establishes
+/// applicability. This enum does not check header presence or edition.
 ///
 /// **Traces:** L3-SEC-001
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SecHdrTimeFormat {
-    /// IRIG 106 Chapter 4 Binary Weighted Time.
+    /// Bits 3–2 = 0b00: Chapter 4 Binary Weighted Time (Figure 11-4).
     Ch4,
-    /// IEEE-1588 Precision Time Protocol.
+    /// Bits 3–2 = 0b01: IEEE-1588/PTP time (Figure 11-5).
     Ieee1588,
-    /// Extended Relative Time Counter (64-bit).
+    /// Bits 3–2 = 0b10: 64-bit ERTC at 1 ns/tick (Figure 11-6).
     Ertc,
-    /// Reserved/unknown format.
+    /// Bits 3–2 = 0b11: reserved format.
+    ///
+    /// The decoder emits `Reserved(3)`; direct construction permits any `u8`.
     Reserved(u8),
 }
 
 impl SecHdrTimeFormat {
-    /// Decode from Packet Flag bits \[3:2\].
+    /// Extract bits 3–2 from any raw packet flag byte (`0..=255`).
+    ///
+    /// Maps 0/1/2/3 to Ch4/PTP/ERTC/Reserved(3); other flag bits are
+    /// ignored. No check of bit 6, bit 7, or edition is performed.
+    ///
+    /// ```
+    /// use irig106_types::SecHdrTimeFormat;
+    /// assert_eq!(SecHdrTimeFormat::from_packet_flags(0b1000_1000),
+    ///            SecHdrTimeFormat::Ertc);
+    /// ```
     #[inline]
     pub fn from_packet_flags(flags: u8) -> Self {
         match (flags >> 2) & 0x03 {

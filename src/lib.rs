@@ -10,6 +10,42 @@
 //! (e.g., converting Chapter 4 binary time to an absolute time of day) lives
 //! in the crates that consume them.
 //!
+//! ## Scope and consumers
+//!
+//! Shared, stable, plain values belong here when several crates need the same
+//! units, field codes, or wire representation. Packet framing/parsing, I/O,
+//! decoding, validation policy, TMATS assembly, calendar interpretation, and
+//! time correlation belong to consumers. The small byte constructors here
+//! only unpack individual time fields; they do not parse whole packets.
+//!
+//! | Crate | Role in the intended architecture | Shared vocabulary |
+//! |---|---|---|
+//! | `irig106-core` | Produces packet-header facts after framing/parsing | Counters and header field values |
+//! | `irig106-tmats` | Consumes setup facts passed by an orchestrator; assembles setup records | Version codes and shared header values |
+//! | `irig106-time` | Interprets and correlates time | Counters, time words, CSDW enums, signed quantities |
+//! | `irig106-decode` | Decodes payloads using the shared vocabulary | Counters, units, field codes as needed |
+//! | `irig106-cli` | Orchestrates the libraries and presents results | Values passed between libraries |
+//!
+//! This is a responsibility map, not a claim that all five crates currently
+//! depend on this crate. The established consumer is `irig106-time`; the
+//! packet-facts API for core/TMATS is a separate design and is not defined here.
+//! TMATS and time must not need a dependency on core merely to exchange values.
+//!
+//! ## Reading contracts
+//!
+//! Citations use IRIG 106-24R1 unless another edition is named. Chapter 11
+//! §11.2.1.1 defines primary-header fields; Figures 11-4–11-6 define secondary
+//! time layouts; §11.2.3.2 a / Figure 11-12 defines Format 1 CSDW codes;
+//! §11.2.7.2 / Figure 11-34 defines setup-record version codes. Unit wrappers,
+//! checked arithmetic, and Rust errors are library abstractions, not additional
+//! standard wire fields. Their docs specify their integer domains explicitly.
+//!
+//! Raw values are not evidence of conformance. Public time-word fields allow
+//! arbitrary integers, enum constructors preserve unknown codes, and optional
+//! derived serde deserialization does not run byte-constructor checks or RTC
+//! masking. Consumers validate untrusted values before applying their policy.
+//! No method chooses a recording edition or leap-second table.
+//!
 //! ## Contents
 //!
 //! | Module | Types |
@@ -45,6 +81,7 @@
 
 #![no_std]
 #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[cfg(feature = "std")]
 extern crate std;

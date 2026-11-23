@@ -3,6 +3,11 @@
 //! The RTC is a free-running 10 MHz counter providing 100 ns resolution.
 //! It occupies 6 bytes (48 bits) in the primary packet header at bytes [16..22].
 //!
+//! Baseline: IRIG 106-24R1 §11.2.1.1 (primary-header RTC) and
+//! §11.2.1.1 g / Figure 11-6 (ERTC). Earlier Chapter 10 recordings also
+//! carry the primary RTC; support for a secondary format is edition-dependent.
+//! These counters carry no UTC/TAI epoch or wrap/session interpretation.
+//!
 //! # Requirement Traceability
 //!
 //! | Requirement | Description |
@@ -42,7 +47,20 @@ const NANOS_PER_TICK: u64 = 100;
 /// headers. It runs at 10 MHz (100 ns per tick) and is represented as a 48-bit
 /// unsigned integer stored little-endian in the 6-byte header field.
 ///
-/// The inner value is guaranteed to fit within 48 bits (≤ `0x0000_FFFF_FFFF_FFFF`).
+/// Byte construction and [`Self::from_raw`] produce values in
+/// `0..=0x0000_FFFF_FFFF_FFFF` (IRIG 106-24R1 §11.2.1.1).
+/// With `serde`, derived deserialization accepts any `u64` without masking;
+/// callers must validate or explicitly use `from_raw` to recover that domain.
+/// `Ord` compares raw counts numerically, not chronologically across a wrap.
+/// Nanosecond methods assume a 48-bit value; they can overflow for an
+/// out-of-domain deserialized value.
+///
+/// ```
+/// use irig106_types::Rtc;
+/// let before = Rtc::MAX;
+/// assert_eq!(before.elapsed_ticks(Rtc::ZERO), 1);
+/// assert_eq!(Rtc::from_raw(1_u64 << 48), Rtc::ZERO);
+/// ```
 ///
 /// **Traces:** L3-RTC-001 ← L2-RTC-001 ← L1-RTC-001
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -57,7 +75,7 @@ impl Rtc {
 
     /// Maximum 48-bit RTC value (2^48 − 1).
     ///
-    /// Represents approximately 325.4 days of elapsed time at 100 ns resolution.
+    /// Represents approximately 325.8 days of elapsed time at 100 ns resolution.
     ///
     /// **Traces:** L3-RTC-005 ← L2-RTC-011, L2-RTC-009
     pub const MAX: Rtc = Rtc(MASK_48);
@@ -92,7 +110,11 @@ impl Rtc {
         self.0
     }
 
-    /// Compute elapsed ticks from `self` to `later`, handling 48-bit wrap-around.
+    /// Compute forward elapsed ticks modulo 2^48, in `0..=2^48 - 1`.
+    ///
+    /// Assumes fewer than one complete counter period elapsed. This cannot
+    /// distinguish a backwards observation from a forward wrap or count
+    /// multiple wraps; the consumer chooses ordering and session policy.
     ///
     /// **Traces:** L3-RTC-009 ← L2-RTC-005 ← L1-RTC-003
     #[inline]
@@ -100,7 +122,10 @@ impl Rtc {
         later.0.wrapping_sub(self.0) & MASK_48
     }
 
-    /// Compute elapsed nanoseconds from `self` to `later`.
+    /// Compute forward elapsed nanoseconds modulo the 48-bit counter period.
+    ///
+    /// Multiplies [`Self::elapsed_ticks`] by 100, yielding
+    /// `0..=28_147_497_671_065_500` ns. The same wrap/ordering caveats apply.
     ///
     /// **Traces:** L3-RTC-010 ← L2-RTC-006 ← L1-RTC-003, L1-RTC-004
     #[inline]
@@ -108,7 +133,10 @@ impl Rtc {
         self.elapsed_ticks(later) * NANOS_PER_TICK
     }
 
-    /// Convert the raw tick count to nanoseconds since the counter epoch.
+    /// Scale the raw count by 100 to nanoseconds relative to counter zero.
+    ///
+    /// For a 48-bit value the range is `0..=28_147_497_671_065_500` ns.
+    /// This assigns no absolute epoch and does not unwrap the counter.
     ///
     /// **Traces:** L3-RTC-011 ← L2-RTC-007 ← L1-RTC-004
     #[inline]
@@ -155,13 +183,16 @@ impl Ord for Rtc {
 pub struct Ertc(u64);
 
 impl Ertc {
-    /// Construct from a raw 64-bit tick count.
+    /// Construct from any `u64` tick count (`0..=u64::MAX`), without masking.
     #[inline]
     pub fn from_raw(value: u64) -> Self {
         Ertc(value)
     }
 
-    /// Parse from an 8-byte little-endian buffer.
+    /// Unpack the first eight little-endian bytes (Figure 11-6).
+    ///
+    /// Returns [`crate::TypesError::BufferTooShort`] for fewer than eight
+    /// bytes; trailing bytes are ignored. Every 64-bit pattern is retained.
     ///
     /// **Traces:** L3-ERTC-002
     #[inline]
@@ -172,7 +203,7 @@ impl Ertc {
         ])))
     }
 
-    /// Raw 64-bit tick count.
+    /// Raw tick count in `0..=u64::MAX`, at one nanosecond per tick.
     #[inline]
     pub fn as_raw(self) -> u64 {
         self.0
@@ -180,7 +211,8 @@ impl Ertc {
 
     /// Convert to nanoseconds (one nanosecond per tick).
     ///
-    /// The existing `u128` return type is retained for compatibility.
+    /// The result is in `0..=u64::MAX` despite the widened `u128` return type.
+    /// No epoch, wrap correction, or primary RTC scaling is applied.
     ///
     /// **Traces:** L3-ERTC-003 ← L2-ABS-008
     #[inline]

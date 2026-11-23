@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Complete existing-API documentation and `docs/GUIDE.md`: crate boundaries, consumer roles, units/ranges, standard citations, edition and raw-value caveats. Explicit CI broken-link checks and compiled guide examples preserve documentation coverage without changing API behavior.
+
 - Weekly OpenSSF Scorecard publishing and SARIF, workflow security checks with zizmor, and repository/package badges.
 - Organization-standard Trusted publishing gate/build/attest/publish/GitHub release/verification pipeline: read-only PR/manual publish-path checks, pinned known-good registry fixture, frozen artifacts, pre-approval provenance for crate and SBOM, and non-compiling publication. Only publish uses the approval environment; permanent GitHub Release assets are never replaced. The dated CHANGELOG and committed release-notes gate applies to the next authorized release; 0.1.0 is not re-released or retroactively attested.
 

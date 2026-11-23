@@ -33,6 +33,15 @@ Interpretation of these values (e.g., Chapter 4 binary time → time of day,
 RTC → absolute time correlation, leap-second tables) lives in
 [`irig106-time`](https://github.com/TelemetryWorks/irig106-time).
 
+## Learning the API
+
+Start with the [walkthrough and consumer map](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/GUIDE.md), then the
+[API reference](https://docs.rs/irig106-types). Types owns shared plain
+values; framing/parsing, I/O, payload decoding, validation policy, TMATS
+assembly and time correlation belong to consumers. The guide distinguishes
+current use from intended ecosystem roles and explains raw-value, serde,
+edition, wrap and epoch caveats.
+
 ## Example
 
 ```rust

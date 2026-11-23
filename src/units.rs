@@ -4,6 +4,17 @@
 //! nanoseconds) or the epoch (Unix vs. TAI) is a realistic source of bugs.
 //! Each is a zero-cost `#[repr(transparent)]` wrapper.
 //!
+//! These are library quantities, not packed wire-field definitions. Every
+//! wrapper accepts its inner integer's entire range, without calendar,
+//! historical-offset, or session validation; `Default` is zero. Serde is
+//! transparent and imposes no extra restrictions. Conversion methods state
+//! when overflow/sign loss is rejected or fractional ticks are truncated.
+//!
+//! Standard anchors: 106-24R1 §11.2.1.1 defines the 100 ns primary RTC;
+//! §11.2.1.1 g / Figures 11-5–11-6 define PTP/ERTC time representations;
+//! §11.2.3.3 names the PTP TAI epoch. Unix epochs, signed displacements,
+//! and checked integer domains below are API definitions, not IRIG code tables.
+//!
 //! | Newtype | Wraps | Meaning |
 //! |---------|-------|---------|
 //! | [`UnixSeconds`] | `u64` | Seconds since 1970-01-01T00:00:00 UTC |
@@ -11,7 +22,7 @@
 //! | [`SignedRtcTicks`] | `i128` | Signed, unwrapped displacement in 100 ns RTC ticks |
 //! | [`SignedNanos`] | `i128` | Signed nanosecond duration, with no epoch |
 //! | [`TaiSeconds`] | `u64` | Seconds since the TAI/PTP epoch (1970-01-01T00:00:00 TAI) |
-//! | [`TaiUtcOffset`] | `i32` | TAI − UTC, in seconds (accumulated leap seconds) |
+//! | [`TaiUtcOffset`] | `i32` | TAI − UTC offset, in whole seconds |
 //! | [`NanosDuration`] | `u64` | A duration in nanoseconds |
 
 macro_rules! newtype {
@@ -24,13 +35,16 @@ macro_rules! newtype {
         pub struct $name($inner);
 
         impl $name {
-            #[doc = concat!("Wrap a raw `", stringify!($inner), "` value.")]
+            #[doc = concat!("Wrap any `", stringify!($inner), "` value in this type's documented units. ",
+                "Accepts the entire integer range without validation, scaling, or epoch conversion; ",
+                "see the type documentation for its domain and standard context.")]
             #[inline]
             pub const fn new(value: $inner) -> Self {
                 $name(value)
             }
 
-            #[doc = concat!("Return the raw `", stringify!($inner), "` value.")]
+            #[doc = concat!("Return the stored `", stringify!($inner), "` in this type's documented units. ",
+                "This preserves the value exactly and performs no validation or conversion.")]
             #[inline]
             pub const fn get(self) -> $inner {
                 self.0
@@ -40,7 +54,11 @@ macro_rules! newtype {
 }
 
 newtype!(
-    /// Seconds since the Unix epoch (1970-01-01T00:00:00 UTC).
+    /// Nonnegative Unix seconds since 1970-01-01T00:00:00 UTC.
+    ///
+    /// Domain: `0..=u64::MAX` seconds, without calendar bounds. Unix seconds
+    /// exclude leap seconds; this is an API epoch convention, not an IRIG wire
+    /// field. Use [`SignedUnixSeconds`] for pre-1970 values.
     UnixSeconds(u64)
 );
 
@@ -52,14 +70,19 @@ newtype!(
     /// "The PTP is referenced in International Atomic Time with an epoch
     /// of January 1, 1970."
     ///
-    /// This is the PTP epoch, not the 1958 TAI epoch. Convert using a
+    /// Domain: `0..=u64::MAX` whole seconds (wider than the packet's 32-bit
+    /// PTP seconds field). This is the PTP epoch, not the 1958 TAI epoch.
+    /// Convert using a
     /// caller-supplied [`TaiUtcOffset`]; this crate does not choose an offset
     /// or resolve historical UTC/leap-second policy.
     TaiSeconds(u64)
 );
 
 newtype!(
-    /// Caller-supplied TAI − UTC offset in whole seconds.
+    /// Caller-supplied TAI − UTC offset in whole seconds (`i32::MIN..=i32::MAX`).
+    ///
+    /// This is an API conversion parameter, not an IRIG offset field. The PTP
+    /// TAI epoch is specified in 106-24R1 §11.2.3.3; no offset table is stored.
     ///
     /// This models the integral offsets used from 1972-01-01 onward; earlier
     /// fractional offsets cannot be represented. For example, the offset
@@ -68,13 +91,19 @@ newtype!(
 );
 
 newtype!(
-    /// A duration measured in nanoseconds.
+    /// Nonnegative duration in `0..=u64::MAX` nanoseconds, with no epoch.
+    ///
+    /// A library quantity, not a wire field. Checked scaling constructors
+    /// reject overflow; [`Self::as_rtc_ticks`] truncates sub-100-ns remainders
+    /// using the RTC unit in 106-24R1 §11.2.1.1.
     NanosDuration(u64)
 );
 
 newtype!(
     /// Signed seconds relative to 1970-01-01T00:00:00 UTC (Unix epoch).
     ///
+    /// Domain: `i128::MIN..=i128::MAX` whole seconds. This is an API
+    /// representation, not an IRIG wire field or a claim about calendar range.
     /// Negative values represent times before 1970. This is an epoch value,
     /// not a duration; no calendar or leap-second interpretation is inferred.
     ///
@@ -88,7 +117,10 @@ newtype!(
 newtype!(
     /// Signed, unwrapped displacement in RTC ticks (100 ns per tick).
     ///
-    /// This is neither a raw 48-bit counter nor an absolute timestamp.
+    /// Domain: `i128::MIN..=i128::MAX` ticks; the 100 ns unit comes from
+    /// 106-24R1 §11.2.1.1. Signed displacement is a library abstraction, not
+    /// an additional header field. This is neither a raw 48-bit counter nor
+    /// an absolute timestamp.
     /// Session/wrap interpretation belongs to the caller.
     ///
     /// ```compile_fail
@@ -99,7 +131,11 @@ newtype!(
 );
 
 newtype!(
-    /// Signed duration in nanoseconds, with no absolute epoch.
+    /// Signed duration in `i128::MIN..=i128::MAX` nanoseconds, with no epoch.
+    ///
+    /// This is a library arithmetic quantity, not a standard wire field.
+    /// Negative values retain a displacement's direction; no ordering or
+    /// counter-wrap interpretation is chosen.
     ///
     /// Conversions to the unsigned [`NanosDuration`] explicitly distinguish
     /// preserving a nonnegative value from taking its magnitude.
@@ -135,7 +171,7 @@ impl SignedRtcTicks {
 }
 
 impl SignedNanos {
-    /// A zero-length signed duration.
+    /// Exactly zero nanoseconds; additive identity, with no absolute epoch.
     pub const ZERO: Self = Self(0);
 
     /// Convert only if nonnegative and representable as a `u64` duration.
@@ -226,7 +262,19 @@ impl NanosDuration {
         SignedNanos(self.0 as i128)
     }
 
-    /// Duration in whole 100 ns RTC ticks (truncating).
+    /// Duration in whole 100 ns RTC ticks, truncating toward zero.
+    ///
+    /// Divides by 100 (106-24R1 §11.2.1.1 RTC unit), yielding
+    /// `0..=184_467_440_737_095_516` ticks. Remainders of 1–99 ns are
+    /// discarded explicitly; the result is an unwrapped duration, not [`crate::Rtc`].
+    ///
+    /// ```
+    /// use irig106_types::{NanosDuration, SignedNanos, SignedRtcTicks};
+    /// assert_eq!(NanosDuration::new(199).as_rtc_ticks(), 1);
+    /// assert_eq!(SignedRtcTicks::new(-2).to_nanos(), Some(SignedNanos::new(-200)));
+    /// assert_eq!(SignedNanos::new(-200).magnitude(), Some(NanosDuration::new(200)));
+    /// assert_eq!(SignedRtcTicks::new(i128::MAX).to_nanos(), None);
+    /// ```
     #[inline]
     pub const fn as_rtc_ticks(self) -> u64 {
         self.0 / 100
