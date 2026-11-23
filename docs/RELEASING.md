@@ -181,7 +181,8 @@ immediate post-create list match. Only a 404 on that ID lookup is retried:
 up to five GETs, 30-second request timeouts, and 1/2/4/8-second backoff
 (15 seconds total scheduled delay). Create is never retried. Exhaustion,
 permission errors, invalid IDs, or mismatched tag/draft/title/body metadata
-fail before attachment. Existing-draft resume does not poll or sleep.
+fail before attachment. Existing-draft discovery through the list does not
+poll or sleep; the retained-ID reads use the bounded lookup rules above.
 
 Missing assets may be added; existing assets must compare byte-for-byte and
 are never clobbered.
@@ -191,8 +192,11 @@ stable version (including the candidate) gets `make_latest: "true"`; older
 stable versions and pre-releases get `"false"`. Pre-releases also set the
 pre-release flag. Draft creation always uses latest=false because a draft
 cannot be Latest; the policy is applied explicitly when publishing its metadata.
-A second tag/commit check immediately before that PATCH blocks un-drafting
-or metadata updates if the tag moved. Metadata selection never permits asset
+A second tag/commit check blocks un-drafting or metadata updates if the tag
+moved. Immediately before the finalizing PATCH, re-fetch the retained numeric
+Release ID and require the same ID, tag, title, and committed notes. A lookup
+failure or changed metadata blocks finalization, even if earlier list/ID
+checks and asset transfers succeeded. Metadata selection never permits asset
 replacement.
 
 **Verify publication** downloads both frozen artifacts as well as the actual
@@ -298,6 +302,19 @@ failure; historical response bodies were not logged. Types shared that lookup.
 The types follow-up retains the API creation response's ID and retries only
 reading that specific ID, while preserving list-based resume. Logs retain the
 new ID so an owner can identify a draft even if lookup exhausts its deadline.
-An uncertain/failed create is never automatically repeated; inspect existing
-drafts before owner-reviewed recovery. This change does not authorize any
-release rerun, tag change or registry operation.
+An uncertain/failed create is never automatically repeated within the job.
+The ID is job-local, not durable state shared with a rerun. In the rare case
+that POST succeeds on GitHub but its response times out before the ID is
+retained, a rerun relies on list-based resume. If that list is still stale,
+the rerun can attempt a second create. Once duplicate matching Releases are
+list-visible, resume fails closed with `Multiple Releases for the tag` and
+requires manual cleanup; the pipeline does not choose one or delete drafts
+automatically. This is a known cross-run recovery edge, not a guarantee that
+a POST timeout means no draft was created. Inspect server state before any
+owner-reviewed rerun. This change does not authorize a release rerun, tag
+change, registry operation, or automated cleanup.
+
+The [core parity follow-up](https://github.com/TelemetryWorks/irig106-core/pull/15)
+also re-fetches by ID immediately before finalization. Types performs that
+second read with its existing bounded getter and checks ID, tag, title and
+committed notes; the expected notes are captured before transfer.
