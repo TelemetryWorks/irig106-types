@@ -82,8 +82,8 @@ x86_64/aarch64 tests and a wasm32 compile-time layout test; no stable ABI is pro
 Core production/orchestrator/TMATS integrations remain planned. See the
 [contract and constructor evolution](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/PACKET-FACTS.md)
 and [verification/adoption record](https://github.com/TelemetryWorks/irig106-types/blob/main/docs/PACKET-FACTS-VERIFICATION.md).
-The next release is 0.2.0 when the owner decides; this addition makes no release
-or version bump, and the published 0.1.0 does not contain PacketFacts.
+PacketFacts is additive work for the owner-timed 0.2.0 release; the published
+0.1.0 does not contain it.
 
 ## Signed quantities and checked conversions
 
