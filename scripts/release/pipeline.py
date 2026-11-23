@@ -268,7 +268,7 @@ def release_list():
 
 
 def release_by_id(release_id):
-    """Poll only a newly created ID; never repeat a create during visibility lag."""
+    """Read a retained ID; never repeat a create during visibility lag."""
     if type(release_id) is not int or release_id <= 0:
         raise ValueError("Create response did not contain a valid release id")
     for attempt in range(5):
@@ -335,6 +335,7 @@ def release_assets(directory, value):
     if tag_commit(tag) != os.environ["RELEASE_COMMIT"]:
         raise ValueError("Remote tag moved from the gate-verified commit")
     notes, title = release_record(value)
+    body = notes.read_text()
     # The list endpoint includes drafts that a tag lookup may not expose.
     matches = [item for item in release_list() if item["tag_name"] == tag]
     if len(matches) > 1:
@@ -347,7 +348,7 @@ def release_assets(directory, value):
         # retries and cannot rely on immediate visibility through the list.
         created = json.loads(run("gh", "api", "--method", "POST", f"repos/{REPO}/releases", "--input", "-",
                                  input=json.dumps({"tag_name": tag, "target_commitish": os.environ["RELEASE_COMMIT"],
-                                                   "name": title, "body": notes.read_text(), "draft": True,
+                                                   "name": title, "body": body, "draft": True,
                                                    "prerelease": prerelease, "make_latest": "false"})))
         release_id = created.get("id") if isinstance(created, dict) else None
         if type(release_id) is not int or release_id <= 0:
@@ -356,7 +357,7 @@ def release_assets(directory, value):
         release = release_by_id(release_id)
         if release.get("tag_name") != tag or release.get("draft") is not True:
             raise ValueError("Created release tag/draft state differs from the request")
-    if release["name"] != title or (release.get("body") or "").replace("\r\n", "\n").strip() != notes.read_text().strip():
+    if release["name"] != title or (release.get("body") or "").replace("\r\n", "\n").strip() != body.strip():
         raise ValueError("Release metadata differs from committed notes")
     names = expected_files(value) | {"SHA256SUMS", bundle.name}
     assets = {asset["name"]: asset for asset in release["assets"]}
@@ -378,6 +379,11 @@ def release_assets(directory, value):
     prerelease, latest = latest_policy(value, release_list())
     if tag_commit(tag) != os.environ["RELEASE_COMMIT"]:
         raise ValueError("Remote tag moved before publishing the release metadata")
+    # Re-read the retained identity after transfer, immediately before PATCH.
+    final = release_by_id(release["id"])
+    if (final.get("tag_name") != tag or final.get("name") != title
+            or (final.get("body") or "").replace("\r\n", "\n").strip() != body.strip()):
+        raise ValueError("Release tag/title/notes changed before finalization")
     subprocess.run(["gh", "api", "--method", "PATCH", f"repos/{REPO}/releases/{release['id']}",
                     "--input", "-"], input=json.dumps({"draft": False, "prerelease": prerelease,
                                                      "make_latest": str(latest).lower()}),

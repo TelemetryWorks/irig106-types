@@ -254,7 +254,7 @@ class ReleaseControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Release gate rejected"):
             self.tag_run(api_commit="c" * 40)
 
-    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=(), id_lag=0, id_status=404, ambiguous=False, created_id=10, create_error=False, created_state=None):
+    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=(), id_lag=0, id_status=404, ambiguous=False, created_id=10, create_error=False, created_state=None, final_state=None):
         bundle = f"irig106-types-{self.value}.crates.intoto.jsonl"
         (self.artifacts / bundle).write_text('{}\n')
         path = self.make_record()
@@ -282,7 +282,8 @@ class ReleaseControls(unittest.TestCase):
                     self.release_id_reads.append(args)
                     if len(self.release_id_reads) <= id_lag:
                         raise subprocess.CalledProcessError(1, args, stderr=f"gh: lookup failed (HTTP {id_status})")
-                    return json.dumps(metadata)
+                    final_read = not new or len(self.release_id_reads) > id_lag + 1
+                    return json.dumps(dict(metadata, **final_state) if final_read and final_state else metadata)
                 self.release_list_reads.append(args)
                 # New drafts stay absent from the list, even after GET by ID works.
                 items = list(other_releases) if new else [metadata, *other_releases]
@@ -320,14 +321,14 @@ class ReleaseControls(unittest.TestCase):
             "body": Path(f"docs/releases/v{self.value}.md").read_text(),
             "draft": True, "prerelease": False, "make_latest": "false",
         })
-        self.assertEqual(len(self.release_id_reads), 1)
+        self.assertEqual(len(self.release_id_reads), 2)
         self.assertEqual(len(calls), 5) # Four asset uploads and final metadata update.
         self.assertIn("PATCH", calls[-1].args[0])
 
     def test_created_draft_uses_id_despite_list_visibility_lag(self):
         calls = self.release_case(new=True)
         self.assertEqual(len(self.release_creates), 1)
-        self.assertEqual(len(self.release_id_reads), 1)
+        self.assertEqual(len(self.release_id_reads), 2)
         # Initial resume discovery and final Latest selection, not draft rediscovery.
         self.assertEqual(len(self.release_list_reads), 2)
         self.release_sleeps.assert_not_called()
@@ -336,7 +337,7 @@ class ReleaseControls(unittest.TestCase):
     def test_created_draft_id_lookup_retries_visibility_lag(self):
         calls = self.release_case(new=True, id_lag=2)
         self.assertEqual(len(self.release_creates), 1)
-        self.assertEqual(len(self.release_id_reads), 3)
+        self.assertEqual(len(self.release_id_reads), 4)
         self.assertEqual([c.args for c in self.release_sleeps.call_args_list], [(1,), (2,)])
         self.assertEqual(len(calls), 5)
 
@@ -405,6 +406,31 @@ class ReleaseControls(unittest.TestCase):
                     self.release_case(new=True, created_state=state)
                 self.release_mutations.assert_not_called()
 
+    def test_finalization_rechecks_id_tag_title_and_notes(self):
+        changes = [{"id": 11}, {"tag_name": "v9.9.9"}, {"name": "Changed title"}, {"body": "Changed notes"}]
+        for new in [False, True]:
+            for change in changes:
+                with self.subTest(new=new, change=change):
+                    with self.assertRaises(ValueError):
+                        self.release_case(new=new, draft=True, final_state=change)
+                    # Existing assets require no writes; new drafts may have uploaded
+                    # assets, but changed metadata must never reach finalization.
+                    self.assertFalse(any("PATCH" in call.args[0] for call in self.release_mutations.call_args_list))
+                    self.assertEqual(len(self.release_id_reads), 2 if new else 1)
+
+    def test_finalization_accepts_notes_with_crlf_and_trailing_whitespace(self):
+        notes = f"# irig106-types {self.value}\r\n\r\nFixed a release control.\r\n\r\n"
+        calls = self.release_case(draft=True, final_state={"body": notes})
+        self.assertEqual(len(self.release_id_reads), 1)
+        self.assertIn("PATCH", calls[-1].args[0])
+
+    def test_finalization_get_failure_blocks_patch(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.release_case(draft=True, id_lag=1, id_status=403)
+        self.assertEqual(self.release_creates, [])
+        self.assertEqual(len(self.release_id_reads), 1)
+        self.release_mutations.assert_not_called()
+
     def test_single_crate_manifest_scope(self):
         Path("Cargo.toml").write_text('[package]\nname="irig106-types"\nversion="0.2.0"\npublish=["crates-io"]\n')
         self.assertEqual(pipeline.version(), self.value)
@@ -446,7 +472,7 @@ class ReleaseControls(unittest.TestCase):
         self.assertIn("PATCH", calls[0].args[0])
         self.assertIn("releases/10", calls[0].args[0][-3])
         self.assertEqual(self.release_creates, [])
-        self.assertEqual(self.release_id_reads, [])
+        self.assertEqual(len(self.release_id_reads), 1)
         self.release_sleeps.assert_not_called()
 
     def test_second_tag_move_check_blocks_undrafting(self):
