@@ -87,8 +87,8 @@ jobs:
         run: |
           cargo build --locked --all-features
           rustdoc --test --edition 2024 docs/GUIDE.md -D warnings \
-            --extern irig106_types=target/debug/libirig106_types.rlib \
-            -L dependency=target/debug/deps
+            --extern irig106_types="$PWD/target/debug/libirig106_types.rlib" \
+            -L dependency="$PWD/target/debug/deps"
 
   wasm:
     name: WASM Build
