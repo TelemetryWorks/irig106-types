@@ -165,6 +165,12 @@ fn serde_traits_and_raw_deserialization_do_not_add_validation() {
     // matching the existing Rtc serde caveat rather than silently masking.
     use serde::de::{self, Deserializer, Visitor, value::MapDeserializer};
     struct Raw(u64);
+    impl<'de> de::IntoDeserializer<'de, de::value::Error> for Raw {
+        type Deserializer = Self;
+        fn into_deserializer(self) -> Self {
+            self
+        }
+    }
     impl<'de> Deserializer<'de> for Raw {
         type Error = de::value::Error;
         fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
