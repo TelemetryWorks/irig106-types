@@ -1,9 +1,9 @@
 # PacketFacts design and requirements
 
-Status: **design proposal for independent review, no implementation**.
+Status: **design approved in PR #25; implementation in progress**.
 Owner boundary decision: [ADR-0001](adr/0001-shared-packet-header-facts.md),
 2026-11-23. This adds shared vocabulary; the next release is **0.2.0**, when
-the owner decides. Cargo stays at 0.1.0 in this design PR; no release is made.
+the owner decides. Cargo stays at 0.1.0 in this implementation PR; no release is made.
 
 ## 1. Boundary and flow
 
@@ -39,8 +39,28 @@ validation. No automatic trust or edition inference occurs at deserialization.
 **PF-002 — Fields.** Store exactly the following observations once. All raw
 integer domains are accepted and retained; contradictory lengths/flags remain
 observable, not repaired. Construction must explicitly supply every field,
-without defaults masquerading as observations. Exact constructor spelling is
-left to the tests-first implementation PR; these field meanings are the contract.
+without defaults masquerading as observations. The constructor is the frozen,
+versioned `PacketFacts::new_v1(byte_offset, rtc, packet_length, data_length,
+channel_id, data_type, data_type_version, sequence, flags)`. It accepts all nine
+observations explicitly and performs no validation or repair.
+
+### Constructor evolution (implementation decision, 2026-11-23)
+
+`#[non_exhaustive]` prevents downstream struct construction/exhaustive matching;
+it does not make a growing public constructor source-compatible. Freeze the
+V1 signature and its nine meanings. Do not add parameters to it, add a `Default`
+implementation, or fabricate zero values for observations not supplied by V1.
+Future observations must use `Option<...>` (or an equally explicit absence type),
+and V1 must initialize them to `None`/not supplied. A new `new_v2` can require
+those additional observations explicitly, including an explicit `None` when
+appropriate. An always-required future observation needs a separately reviewed
+API/type transition rather than silently changing V1. All such changes must
+still satisfy, or explicitly re-review, the 32-byte budget. No speculative
+future fields or absence slots are stored in this implementation.
+
+The nine-argument constructor has a narrowly scoped clippy argument-count
+exception: keeping the approved fields explicit and the versioned signature
+stable is intentional. There is no defaulting builder or competing facts type.
 
 | Field / getter | Type and range | Origin and meaning |
 |---|---|---|
@@ -212,14 +232,14 @@ The following links pin the inspected inputs rather than assuming main is fixed:
 
 - [Core header](https://github.com/TelemetryWorks/irig106-core/blob/3c12bcd33b1ae66cca2d6378f4bfe08f2fc8c9a1/crates/irig106-core/src/header.rs)
   and [reader](https://github.com/TelemetryWorks/irig106-core/blob/3c12bcd33b1ae66cca2d6378f4bfe08f2fc8c9a1/crates/irig106-core/src/reader.rs).
-- [TMATS interpretation register, INT-011/045](https://github.com/TelemetryWorks/irig106-tmats/blob/8eefd96c30f80cdf676aa0a13e090bbebe948e2d/docs/INTERPRETATIONS.md):
-  INT-011 review complete; INT-045 initial decision approved, mid-session
-  amended wording/recheck still pending at this snapshot. This design does not
-  confer independent review approval on that semantic extension.
-- [Pipeline performance design](https://github.com/TelemetryWorks/irig106-docs/blob/9317a6161364ef74e7c4450dc520a124b83476ff/src/architecture/pipeline.md#5-performance-design),
-  from open irig106-docs PR #4, not main at inspection. It describes planned
-  integrations; its older TMATS source snapshot is superseded here by the
-  pinned current register's more specific first-fragment SRCC guards.
+- [TMATS interpretation register, INT-011/045](https://github.com/TelemetryWorks/irig106-tmats/blob/3bb197bb0bf846ed5e083e3a984873e834197f2a/docs/INTERPRETATIONS.md):
+  INT-011 and guarded INT-045 initial/mid-session extension have completed
+  owner and independent review at this snapshot. Types supplies observations;
+  it does not implement those TMATS semantics.
+- [Pipeline performance design](https://github.com/TelemetryWorks/irig106-docs/blob/db6023940329e07549e30e2052083dcadf025100/src/architecture/pipeline.md#5-performance-design),
+  final irig106-docs PR #4 head requested for this implementation (still open
+  at inspection). It describes planned integrations, selective dispatch and
+  the reviewed first-fragment SRCC guards; it is not a performance measurement.
 - Standard PDF above: SHA-256
   `0f63792dcac39f6010df371ee0afc46a396017918f4155cba9ebab6c2d6d263e`,
   matched to the standards archive manifest; inspected header text and tables.
