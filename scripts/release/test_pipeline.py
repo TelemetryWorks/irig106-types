@@ -254,14 +254,16 @@ class ReleaseControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Release gate rejected"):
             self.tag_run(api_commit="c" * 40)
 
-    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=(), id_lag=0, id_status=404, ambiguous=False):
+    def release_case(self, *, moved=False, wrong_body=False, mismatch=False, missing=False, draft=False, new=False, invalid_assets=None, moved_after_assets=False, other_releases=(), id_lag=0, id_status=404, ambiguous=False, created_id=10, create_error=False, created_state=None):
         bundle = f"irig106-types-{self.value}.crates.intoto.jsonl"
         (self.artifacts / bundle).write_text('{}\n')
         path = self.make_record()
         names = sorted(pipeline.expected_files(self.value) | {"SHA256SUMS", bundle})
-        metadata = {"id": 10, "tag_name": f"v{self.value}", "name": f"irig106-types {self.value}",
+        metadata = {"id": created_id if type(created_id) is int and created_id > 0 else 10, "tag_name": f"v{self.value}", "name": f"irig106-types {self.value}",
                     "body": "wrong" if wrong_body else path.read_text(), "draft": draft or new,
                     "assets": [] if missing or new else [{"name": name, "id": i} for i, name in enumerate(names)]}
+        if new and created_state:
+            metadata.update(created_state)
         if invalid_assets == "unexpected":
             metadata["assets"].append({"name": "unexpected.crate", "id": 99})
         elif invalid_assets == "duplicate":
@@ -273,8 +275,10 @@ class ReleaseControls(unittest.TestCase):
             if args[0] == "gh":
                 if "--method" in args and args[args.index("--method") + 1] == "POST":
                     self.release_creates.append((args, kwargs))
-                    return json.dumps({"id": 10})
-                if args[2] == f"repos/{pipeline.REPO}/releases/10":
+                    if create_error:
+                        raise subprocess.CalledProcessError(1, args, stderr="gh: create failed (HTTP 500)")
+                    return json.dumps({"id": created_id})
+                if args[2] == f"repos/{pipeline.REPO}/releases/{created_id}":
                     self.release_id_reads.append(args)
                     if len(self.release_id_reads) <= id_lag:
                         raise subprocess.CalledProcessError(1, args, stderr=f"gh: lookup failed (HTTP {id_status})")
@@ -296,7 +300,7 @@ class ReleaseControls(unittest.TestCase):
              patch.object(pipeline, "run", side_effect=fake_run), \
              patch.object(pipeline.subprocess, "check_output", side_effect=asset_bytes), \
              patch.object(pipeline.subprocess, "run") as mutations, \
-             patch.object(pipeline.time, "sleep") as sleeps:
+             patch.object(pipeline.time, "sleep") as sleeps, patch.object(pipeline, "summary"):
             self.release_sleeps = sleeps
             self.release_mutations = mutations
             self.release_tag_checks = tags
@@ -360,6 +364,47 @@ class ReleaseControls(unittest.TestCase):
         self.release_sleeps.assert_not_called()
         self.release_mutations.assert_not_called()
 
+    def test_created_release_uses_returned_id_for_all_mutations(self):
+        calls = self.release_case(new=True, created_id=731)
+        self.assertEqual(self.release_id_reads[0][2], f"repos/{pipeline.REPO}/releases/731")
+        self.assertTrue(all("releases/731/assets" in c.args[0][4] for c in calls[:-1]))
+        self.assertEqual(calls[-1].args[0][4], f"repos/{pipeline.REPO}/releases/731")
+
+    def test_invalid_create_id_fails_before_lookup_or_assets(self):
+        for release_id in [None, "10", True, 0, -1]:
+            with self.subTest(release_id=release_id):
+                with self.assertRaisesRegex(ValueError, "valid release id"):
+                    self.release_case(new=True, created_id=release_id)
+                self.assertEqual(len(self.release_creates), 1)
+                self.assertEqual(self.release_id_reads, [])
+                self.release_mutations.assert_not_called()
+
+    def test_lookup_rejects_wrong_returned_id(self):
+        for release_id in [11, "10", True, 10.0]:
+            with self.subTest(release_id=release_id), \
+                 patch.object(pipeline, "run", return_value=json.dumps({"id": release_id})) as request, \
+                 patch.object(pipeline.time, "sleep") as sleeps:
+                with self.assertRaisesRegex(ValueError, "different id"):
+                    pipeline.release_by_id(10)
+                self.assertEqual(request.call_count, 1)
+                self.assertEqual(request.call_args.kwargs["timeout"], 30)
+                sleeps.assert_not_called()
+
+    def test_create_failure_does_not_retry_or_attach(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.release_case(new=True, create_error=True)
+        self.assertEqual(len(self.release_creates), 1)
+        self.assertEqual(self.release_id_reads, [])
+        self.release_sleeps.assert_not_called()
+        self.release_mutations.assert_not_called()
+
+    def test_created_draft_requires_matching_tag_and_draft_state(self):
+        for state in [{"tag_name": "v9.9.9"}, {"draft": False}]:
+            with self.subTest(state=state):
+                with self.assertRaisesRegex(ValueError, "tag/draft state"):
+                    self.release_case(new=True, created_state=state)
+                self.release_mutations.assert_not_called()
+
     def test_single_crate_manifest_scope(self):
         Path("Cargo.toml").write_text('[package]\nname="irig106-types"\nversion="0.2.0"\npublish=["crates-io"]\n')
         self.assertEqual(pipeline.version(), self.value)
@@ -384,8 +429,10 @@ class ReleaseControls(unittest.TestCase):
             self.release_case(wrong_body=True)
 
     def test_moved_remote_tag_rejected(self):
-        with self.assertRaises(ValueError):
-            self.release_case(moved=True)
+        for new in [False, True]:
+            with self.subTest(new=new), self.assertRaises(ValueError):
+                self.release_case(moved=True, new=new)
+            self.assertEqual(self.release_creates, [])
 
     def test_missing_release_assets_uploaded_without_clobber(self):
         calls = self.release_case(missing=True)

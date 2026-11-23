@@ -267,6 +267,26 @@ def release_list():
     return [item for page in pages for item in page]
 
 
+def release_by_id(release_id):
+    """Poll only a newly created ID; never repeat a create during visibility lag."""
+    if type(release_id) is not int or release_id <= 0:
+        raise ValueError("Create response did not contain a valid release id")
+    for attempt in range(5):
+        try:
+            release = json.loads(run("gh", "api", f"repos/{REPO}/releases/{release_id}",
+                                     stderr=subprocess.PIPE, timeout=30))
+        except subprocess.CalledProcessError as error:
+            if not re.search(r"\bHTTP 404\b", str(error.stderr or "")):
+                raise
+            if attempt == 4:
+                raise ValueError(f"Created draft {release_id} unavailable after 5 ID lookups") from error
+            time.sleep(2 ** attempt)
+            continue
+        if not isinstance(release, dict) or type(release.get("id")) is not int or release["id"] != release_id:
+            raise ValueError("Release lookup returned a different id")
+        return release
+
+
 def semantic_version(value):
     match = re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?", value)
     if not match:
@@ -320,24 +340,22 @@ def release_assets(directory, value):
     if len(matches) > 1:
         raise ValueError("Multiple Releases for the tag")
     if matches:
-        existing = matches[0]
-        if existing["name"] != title or (existing.get("body") or "").replace("\r\n", "\n").strip() != notes.read_text().strip():
-            raise ValueError("Existing Release title/body differs from committed notes")
+        release = matches[0]
     else:
         prerelease, _ = latest_policy(value, [])
-        command = ["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", "--draft",
-                   # Drafts cannot be Latest; select Latest explicitly when publishing below.
-                   "--latest=false", "--target", os.environ["RELEASE_COMMIT"],
-                   "--title", title, "--notes-file", str(notes)]
-        if prerelease:
-            command.append("--prerelease")
-        subprocess.run(command, check=True)
-    # Use the numeric release/asset APIs: tag lookup can hide a resumed draft.
-    if not matches:
-        matches = [item for item in release_list() if item["tag_name"] == tag]
-    if len(matches) != 1:
-        raise ValueError("Created draft could not be uniquely identified")
-    release = matches[0]
+        # The annotated remote tag/commit was verified above; creation never
+        # retries and cannot rely on immediate visibility through the list.
+        created = json.loads(run("gh", "api", "--method", "POST", f"repos/{REPO}/releases", "--input", "-",
+                                 input=json.dumps({"tag_name": tag, "target_commitish": os.environ["RELEASE_COMMIT"],
+                                                   "name": title, "body": notes.read_text(), "draft": True,
+                                                   "prerelease": prerelease, "make_latest": "false"})))
+        release_id = created.get("id") if isinstance(created, dict) else None
+        if type(release_id) is not int or release_id <= 0:
+            raise ValueError("Create response did not contain a valid release id")
+        summary(f"Created draft {release_id}; reading by ID without list rediscovery")
+        release = release_by_id(release_id)
+        if release.get("tag_name") != tag or release.get("draft") is not True:
+            raise ValueError("Created release tag/draft state differs from the request")
     if release["name"] != title or (release.get("body") or "").replace("\r\n", "\n").strip() != notes.read_text().strip():
         raise ValueError("Release metadata differs from committed notes")
     names = expected_files(value) | {"SHA256SUMS", bundle.name}
