@@ -1,8 +1,9 @@
 //! # irig106-types
 //!
 //! Foundational, dependency-free types intended as the shared vocabulary of
-//! the TelemetryWorks IRIG 106 crate ecosystem; currently used by
-//! `irig106-time`.
+//! the TelemetryWorks IRIG 106 crate ecosystem. Current consumers are
+//! `irig106-core` (published 0.1.0) and `irig106-time` (unreleased,
+//! repository dependency).
 //!
 //! This crate holds only the *vocabulary* of IRIG 106: counters, wire-level
 //! time representations, time-related enumerations, and unit/epoch newtypes.
@@ -18,17 +19,18 @@
 //! time correlation belong to consumers. The small byte constructors here
 //! only unpack individual time fields; they do not parse whole packets.
 //!
-//! | Crate | Role in the intended architecture | Shared vocabulary |
+//! | Crate | Consumer status and role | Shared vocabulary |
 //! |---|---|---|
-//! | `irig106-core` | Produces packet-header facts after framing/parsing | Counters and header field values |
-//! | `irig106-tmats` | Consumes setup facts passed by an orchestrator; assembles setup records | Version codes and shared header values |
-//! | `irig106-time` | Interprets and correlates time | Counters, time words, CSDW enums, signed quantities |
-//! | `irig106-decode` | Decodes payloads using the shared vocabulary | Counters, units, field codes as needed |
-//! | `irig106-cli` | Orchestrates the libraries and presents results | Values passed between libraries |
+//! | `irig106-core` | Current: published 0.1.0; packet framing/parsing | Re-exports [`Rtc`] and returns it from `Header::rtc()` |
+//! | `irig106-tmats` | Planned: consumes PacketFacts passed by an orchestrator; assembles setup records | Version codes and shared header values |
+//! | `irig106-time` | Current: unreleased repository dependency; time interpretation/correlation | Counters, time words, CSDW enums, signed quantities |
+//! | `irig106-decode` | Intended: payload decoding | Counters, units, field codes as needed |
+//! | `irig106-cli` | Intended: orchestration and presentation | Values passed between libraries |
 //!
-//! This is a responsibility map, not a claim that all five crates currently
-//! depend on this crate. The established consumer is `irig106-time`; the
-//! packet-facts API for core/TMATS is a separate design and is not defined here.
+//! As of 2026-11-23, `irig106-core` is the only reverse dependency on
+//! crates.io; `irig106-time` consumes types through a repository dependency.
+//! The other rows describe planned or intended roles, not current dependencies.
+//! The PacketFacts API for core/TMATS is a separate design and is not defined here.
 //! TMATS and time must not need a dependency on core merely to exchange values.
 //!
 //! ## Reading contracts

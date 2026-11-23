@@ -15,14 +15,15 @@ field. Their limited checks do not make a packet conforming.
 
 | Crate | Responsibility | Relationship to types |
 |---|---|---|
-| `irig106-core` | Packet framing/parsing; produces header facts | Intended producer of shared header values |
-| `irig106-tmats` | Setup assembly; consumes facts supplied by an orchestrator | Intended consumer without depending on core |
-| `irig106-time` | Time interpretation, session/wrap policy, correlation | Established consumer of counters, time words, enums and quantities |
+| `irig106-core` | Packet framing/parsing; produces header facts | Current: published 0.1.0; re-exports `Rtc` and returns it from `Header::rtc()` |
+| `irig106-tmats` | Setup assembly; consumes facts supplied by an orchestrator | Planned: PacketFacts consumer without depending on core |
+| `irig106-time` | Time interpretation, session/wrap policy, correlation | Current: unreleased repository dependency; counters, time words, enums and quantities |
 | `irig106-decode` | Payload decoding | Intended consumer of common units/codes as needed |
-| `irig106-cli` | Composition, I/O and presentation | Orchestrates producers and consumers |
+| `irig106-cli` | Composition, I/O and presentation | Intended: orchestrates producers and consumers |
 
-This is an architectural responsibility map, not a claim of five existing
-Cargo dependencies. The shared packet-facts type is a separate design;
+As of 2026-11-23, `irig106-core` is the only reverse dependency on crates.io;
+`irig106-time` uses a repository dependency. The remaining rows describe planned
+or intended roles, not current dependencies. The shared PacketFacts type is a separate design;
 this documentation change adds no such API. A plain value should cross the
 boundary; a dependency on core should not be required just to name it.
 

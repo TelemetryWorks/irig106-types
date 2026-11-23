@@ -9,8 +9,13 @@
 Zero-cost abstractions and foundational types for IRIG 106 telemetry.
 
 `irig106-types` is intended as the shared vocabulary of the TelemetryWorks
-IRIG 106 crate ecosystem; currently used by `irig106-time`. It defines
-counters, wire-level time representations,
+IRIG 106 crate ecosystem. Current consumers are `irig106-core` (published
+0.1.0; re-exports `Rtc` and returns it from `Header::rtc()`) and
+`irig106-time` (unreleased, repository dependency). As of 2026-11-23,
+`irig106-core` is the only reverse dependency on crates.io. `irig106-tmats`
+is a planned consumer of PacketFacts; decode and cli describe intended roles.
+
+The crate defines counters, wire-level time representations,
 time-related enumerations, and unit/epoch newtypes, and nothing else: no I/O,
 no parsing of whole packets, no correlation.
 
