@@ -27,6 +27,13 @@ use crate::error::{Result, TypesError, require_len};
 /// This is a raw representation: parsing checks buffer length, ignores the
 /// reserved word, and preserves the three time words without validating them.
 /// Consumers handle reserved-bit checks and conversion to absolute time.
+/// All fields accept `0..=u16::MAX`, including nonconforming microseconds.
+///
+/// Edition caveat: the packet word order is explicit from 106-11 onward;
+/// for 106-04–106-09 it is inferred from the later figure. The 106-04/05
+/// Chapter 4 Figure 4-3 draws zeros differently, but §4.7.4 still specifies
+/// the 655.36-second high-word weight. No high/low bits are masked here.
+/// Chapter 4 PCM insertion order is distinct from Chapter 11 packet order.
 ///
 /// **Traces:** L3-CH4-001 ← L2-ABS-003 ← L1-ABS-002
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -55,6 +62,17 @@ impl Ch4BinaryTime {
     /// (printed page 11-10), with the low 16-bit half of each 32-bit row
     /// appearing first in the byte stream. The reserved word is ignored;
     /// all bits of the time words are preserved. Only length is validated.
+    /// Returns [`TypesError::BufferTooShort`] for fewer than eight bytes;
+    /// trailing bytes are ignored.
+    ///
+    /// ```
+    /// use irig106_types::Ch4BinaryTime;
+    /// let time = Ch4BinaryTime::from_secondary_bytes(
+    ///     &[0, 0, 0x34, 0x12, 0x01, 0x80, 2, 0],
+    /// ).unwrap();
+    /// assert_eq!((time.high_order, time.low_order, time.microseconds),
+    ///            (2, 0x8001, 0x1234));
+    /// ```
     ///
     /// **Traces:** L3-CH4-005
     pub fn from_secondary_bytes(buf: &[u8]) -> Result<Self> {
@@ -69,6 +87,8 @@ impl Ch4BinaryTime {
     /// Parse an 8-byte intra-packet time stamp in the same layout as
     /// [`Self::from_secondary_bytes`].
     ///
+    /// Length errors, trailing-byte handling, and edition caveats are identical
+    /// to that constructor; this method does not check the packet flags.
     /// Applies when the packet flags select Chapter 4 secondary-header time
     /// for IPTS (106-24R1 §11.2.1.1 g and §11.2.1.3 b).
     ///
@@ -82,20 +102,36 @@ impl Ch4BinaryTime {
 // IEEE-1588 Time
 // ═══════════════════════════════════════════════════════════════════════
 
-/// IEEE-1588 Precision Time Protocol time value.
+/// IEEE-1588/PTP time words in the IRIG packet representation.
+///
+/// IRIG 106-24R1 §11.2.1.1 g / Figure 11-5 specifies the secondary layout;
+/// §11.2.1.3 b selects it for intra-packet time when the flags require it.
+/// Section 11.2.3.3 specifies the 1970-01-01 TAI/PTP epoch (not 1958).
+/// Older editions use Chapter 10 numbering; format applicability belongs
+/// to the consumer, not this edition-independent container.
+///
+/// Both public fields admit every `u32`; only [`Self::from_le_bytes`]
+/// enforces the nanosecond fraction range. Struct literals and serde do not.
+/// This is the packet's 32-bit seconds field, not a full PTP protocol message.
 ///
 /// **Traces:** L3-1588-001 ← L2-ABS-005 ← L1-ABS-003
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ieee1588Time {
-    /// Nanoseconds within the current second (0–999_999_999).
+    /// Nanosecond fraction; conforming range `0..=999_999_999`.
+    ///
+    /// Public construction can also retain out-of-range raw `u32` values.
     pub nanoseconds: u32,
-    /// Seconds since the IEEE-1588 epoch.
+    /// Whole TAI seconds since 1970-01-01T00:00:00 TAI (`0..=u32::MAX`).
     pub seconds: u32,
 }
 
 impl Ieee1588Time {
-    /// Parse from an 8-byte little-endian buffer: `[nanoseconds(4), seconds(4)]`.
+    /// Unpack `[nanoseconds(4), seconds(4)]`, little-endian (Figure 11-5).
+    ///
+    /// Returns [`TypesError::BufferTooShort`] for fewer than eight bytes or
+    /// [`TypesError::OutOfRange`] for nanoseconds ≥ 1_000_000_000.
+    /// Trailing bytes are ignored; seconds accept the entire `u32` range.
     ///
     /// **Traces:** L3-1588-002
     #[inline]
@@ -116,7 +152,12 @@ impl Ieee1588Time {
         })
     }
 
-    /// Total nanoseconds since the IEEE-1588 epoch.
+    /// Scale seconds by 1_000_000_000 and add the nanosecond word.
+    ///
+    /// Units are TAI/PTP nanoseconds since 1970, without UTC conversion.
+    /// The result fits `u64` even for two arbitrary `u32` fields; for a
+    /// conforming fraction it is at most 4_294_967_295_999_999_999.
+    /// This does not validate a value constructed through public fields.
     ///
     /// **Traces:** L3-1588-003 ← L2-ABS-006
     #[inline]

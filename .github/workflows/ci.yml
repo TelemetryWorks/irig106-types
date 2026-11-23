@@ -81,7 +81,15 @@ jobs:
           toolchain: stable
       - run: cargo doc --no-deps --all-features
         env:
-          RUSTDOCFLAGS: "-D warnings"
+          RUSTDOCFLAGS: "-D warnings -D rustdoc::broken_intra_doc_links"
+
+      - name: Compile guide examples
+        run: |
+          # These examples need no features/dependencies. Avoid depending on
+          # Cargo's internal dependency-artifact directory layout.
+          cargo build --locked --no-default-features
+          rustdoc --test --edition 2024 docs/GUIDE.md -D warnings \
+            --extern irig106_types="$PWD/target/debug/libirig106_types.rlib"
 
   wasm:
     name: WASM Build

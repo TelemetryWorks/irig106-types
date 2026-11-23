@@ -10,30 +10,48 @@
 /// the field. Neither table assigns a code to 106-23, 106-24, or 106-24R1.
 /// Their tables retain the 106-22 entry (unchanged through 106-24R1).
 /// Unknown/reserved codes are preserved, never guessed as a later release.
+/// Codes are dimensionless bytes (`0..=255`), not edition numbers themselves.
+///
+/// The setup table is 106-24R1 §11.2.7.2 / Figure 11-34; the separate
+/// header list is §11.2.1.1 e (Table 11-4 lists current per-type versions).
+/// The variants below name entries in those lists, not proof of the recording
+/// edition. The same variant can correspond to different raw bytes in the
+/// two fields. No reverse mapping or policy decision is implied.
+///
+/// ```
+/// use irig106_types::Irig106Version;
+/// assert_eq!(Irig106Version::from_setup_record(7), Irig106Version::V07);
+/// assert_eq!(Irig106Version::from_data_type_version(3), Irig106Version::V07);
+/// assert_eq!(Irig106Version::from_setup_record(15), Irig106Version::Unknown(15));
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Irig106Version {
-    /// RCC 106-04 (packet data type version only).
+    /// RCC 106-04: no setup code; header code `0x01`.
     V04,
-    /// RCC 106-05 (packet data type version only).
+    /// RCC 106-05: no setup code; header code `0x02`.
     V05,
-    /// RCC 106-07.
+    /// RCC 106-07: setup code `0x07`, header code `0x03`.
     V07,
-    /// RCC 106-09.
+    /// RCC 106-09: setup code `0x08`, header code `0x04`.
     V09,
-    /// RCC 106-11.
+    /// RCC 106-11: setup code `0x09`, header code `0x05`.
     V11,
-    /// RCC 106-13.
+    /// RCC 106-13: setup code `0x0A`, header code `0x06`.
     V13,
-    /// RCC 106-15.
+    /// RCC 106-15: setup code `0x0B`, header code `0x07`.
     V15,
-    /// RCC 106-17.
+    /// RCC 106-17: setup code `0x0C`, header code `0x08`.
     V17,
-    /// RCC 106-19.
+    /// RCC 106-19: setup code `0x0D`, header code `0x09`.
     V19,
-    /// RCC 106-22; table entry unchanged through 106-24R1.
+    /// RCC 106-22: setup code `0x0E`, header code `0x0A`.
+    /// The table entry remains unchanged through 106-24R1.
     V22,
-    /// Reserved or unrecognized code, preserved unchanged.
+    /// Reserved or unrecognized byte (`0..=255`), preserved unchanged.
+    ///
+    /// Direct construction also permits codes named by a table; it does not
+    /// retain which of the two fields originally supplied the byte.
     Unknown(u8),
 }
 

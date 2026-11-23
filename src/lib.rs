@@ -1,14 +1,52 @@
 //! # irig106-types
 //!
 //! Foundational, dependency-free types intended as the shared vocabulary of
-//! the TelemetryWorks IRIG 106 crate ecosystem; currently used by
-//! `irig106-time`.
+//! the TelemetryWorks IRIG 106 crate ecosystem. Current consumers are
+//! `irig106-core` (published 0.1.0) and `irig106-time` (unreleased,
+//! repository dependency).
 //!
 //! This crate holds only the *vocabulary* of IRIG 106: counters, wire-level
 //! time representations, time-related enumerations, and unit/epoch newtypes.
 //! It performs no I/O and no correlation. Interpretation of these values
 //! (e.g., converting Chapter 4 binary time to an absolute time of day) lives
 //! in the crates that consume them.
+//!
+//! ## Scope and consumers
+//!
+//! Shared, stable, plain values belong here when several crates need the same
+//! units, field codes, or wire representation. Packet framing/parsing, I/O,
+//! decoding, validation policy, TMATS assembly, calendar interpretation, and
+//! time correlation belong to consumers. The small byte constructors here
+//! only unpack individual time fields; they do not parse whole packets.
+//!
+//! | Crate | Consumer status and role | Shared vocabulary |
+//! |---|---|---|
+//! | `irig106-core` | Current: published 0.1.0; packet framing/parsing | Re-exports [`Rtc`] and returns it from `Header::rtc()` |
+//! | `irig106-tmats` | Planned: consumes PacketFacts passed by an orchestrator; assembles setup records | Version codes and shared header values |
+//! | `irig106-time` | Current: unreleased repository dependency; time interpretation/correlation | Counters, time words, CSDW enums, signed quantities |
+//! | `irig106-decode` | Intended: payload decoding | Counters, units, field codes as needed |
+//! | `irig106-cli` | Intended: orchestration and presentation | Values passed between libraries |
+//!
+//! As of 2026-11-23, `irig106-core` is the only reverse dependency on
+//! crates.io; `irig106-time` consumes types through a repository dependency.
+//! The other rows describe planned or intended roles, not current dependencies.
+//! The PacketFacts API for core/TMATS is a separate design and is not defined here.
+//! TMATS and time must not need a dependency on core merely to exchange values.
+//!
+//! ## Reading contracts
+//!
+//! Citations use IRIG 106-24R1 unless another edition is named. Chapter 11
+//! §11.2.1.1 defines primary-header fields; Figures 11-4–11-6 define secondary
+//! time layouts; §11.2.3.2 a / Figure 11-12 defines Format 1 CSDW codes;
+//! §11.2.7.2 / Figure 11-34 defines setup-record version codes. Unit wrappers,
+//! checked arithmetic, and Rust errors are library abstractions, not additional
+//! standard wire fields. Their docs specify their integer domains explicitly.
+//!
+//! Raw values are not evidence of conformance. Public time-word fields allow
+//! arbitrary integers, enum constructors preserve unknown codes, and optional
+//! derived serde deserialization does not run byte-constructor checks or RTC
+//! masking. Consumers validate untrusted values before applying their policy.
+//! No method chooses a recording edition or leap-second table.
 //!
 //! ## Contents
 //!
@@ -45,6 +83,7 @@
 
 #![no_std]
 #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[cfg(feature = "std")]
 extern crate std;
