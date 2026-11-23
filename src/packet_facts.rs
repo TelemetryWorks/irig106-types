@@ -27,6 +27,14 @@ use crate::{Rtc, SecHdrTimeFormat};
 /// With `serde`, the representation is a struct with the nine getter names as
 /// fields. Derived deserialization is not validation; in particular, it can
 /// retain an out-of-48-bit [`Rtc`] just as that type's existing serde does.
+/// In self-describing named-field formats such as JSON, unknown fields are
+/// ignored, not retained; re-serialization drops them. Keep this forward-compatible
+/// behavior rather than adding `deny_unknown_fields`. Future optional fields
+/// must use field-level `#[serde(default)]` (feature-gated by `cfg_attr`) so
+/// missing V1 keys read as `None`. The current nine fields remain required;
+/// there is no container-wide default. Positional/binary formats need separate
+/// versioned encoding and compatibility tests; these rules are not a universal
+/// binary-wire guarantee.
 ///
 /// # Constructor evolution
 ///
@@ -35,7 +43,12 @@ use crate::{Rtc, SecHdrTimeFormat};
 /// recording absence rather than inventing a value. A later constructor can
 /// supply them. Non-exhaustiveness alone does not protect constructor callers.
 /// There is no `Default`: callers must supply every V1 observation explicitly.
-/// Future fields also require review of the size budget and serde contract.
+/// Current scalar storage uses 30 of 32 bytes, leaving only two bytes of padding.
+/// An ordinary `Option<u16>` already needs four bytes and cannot fit; niche
+/// representations can differ. A field exceeding the budget requires a separate
+/// V2 type preserving this type's contract, or explicit owner approval to relax
+/// the target and update all architecture checks. A new constructor alone cannot
+/// preserve this type's old size. No stable padding/ABI is promised.
 ///
 /// ```
 /// use irig106_types::{KnownDataType, PacketFacts, Rtc};

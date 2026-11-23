@@ -83,7 +83,51 @@ The scalar storage totals 30 bytes before padding: two 8-byte values, two
 4-byte lengths, one 2-byte channel and four bytes of codes/flags. Target
 `size_of::<PacketFacts>() <= 32` on x86_64, aarch64 and wasm32, verified in
 implementation tests. Do not promise a stable Rust field layout, packed layout,
-C ABI or raw-byte transmutation. Any future size increase needs explicit review.
+C ABI or raw-byte transmutation. The current 32-byte layout has only **two
+bytes of padding/headroom**, not space reserved for another observation.
+For ordinary integer observations, `Option<u8>` takes two bytes and may fit;
+`Option<u16>` takes four, so an optional integer payload wider than one byte
+already exceeds the budget (and `Option<u32>`/`Option<u64>` are larger still).
+Count the entire `Option`, including its discriminant and alignment, not just
+its payload. This is not a universal rule for every Rust type: niche-optimized
+`Option<NonZeroU16>` takes two bytes, for example. See Rust's
+[Option representation guarantees](https://doc.rust-lang.org/std/option/index.html#representation).
+Never narrow an observation's domain or conflate zero with absence to fit it.
+
+If a future field cannot fit, introduce a separately reviewed **V2 facts type**
+while retaining the existing PacketFacts/V1 constructor and 32-byte contract,
+or obtain **explicit owner approval to relax the size target** and update the
+contract and all three target checks. Merely adding `new_v2` to the same enlarged
+type does not preserve V1's size. Field order/padding is not a stable ABI;
+every extension must verify the resulting whole-type layout on x86_64,
+aarch64 and wasm32 rather than assuming the remaining two bytes can be used.
+
+### Serde evolution contract (2026-11-23)
+
+For future optional observations on this type, require field-level
+`#[serde(default)]`, feature-gated here as
+`#[cfg_attr(feature = "serde", serde(default))]`. When older V1 named-field
+data omits that key, it reads as `None`/not supplied. This does **not** add a
+struct `Default`, apply container-wide defaults, or default any of the existing
+nine required observations. Missing required fields remain errors; absence is
+not a fabricated numeric zero. See [Serde field defaults](https://serde.rs/field-attrs.html).
+
+**Decision: retain unknown-field tolerance; do not add `deny_unknown_fields`.**
+For self-describing named-field formats such as JSON, newer data read by today's
+V1 code has its known nine fields read and its unknown fields ignored, as in
+[Serde's documented default](https://serde.rs/container-attrs.html).
+Ignoring is not preservation: a V1 deserialize/serialize cycle drops unknown
+fields. Keep original serialized bytes separately when that evidence matters;
+PacketFacts does not grow an extension map or heap allocation to retain them.
+This is schema compatibility, not validation or permission to infer trust or
+semantics from ignored fields. Adding `deny_unknown_fields` later would reject
+previously accepted data and requires explicit compatibility/owner review.
+
+This compatibility statement is for named-field/self-describing representations,
+not a universal binary-wire promise. Positional or non-self-describing formats
+need their own versioned encoding and compatibility tests; `#[serde(default)]`
+and the V1 Rust constructor do not automatically make those formats evolvable.
+No serde attributes or runtime behavior change in this documentation follow-up.
 
 **PF-003 — Raw code plus named view.** `data_type()` always returns the
 original byte. A computed `known_data_type() -> Option<KnownDataType>` view
