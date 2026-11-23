@@ -85,10 +85,11 @@ jobs:
 
       - name: Compile guide examples
         run: |
-          cargo build --locked --all-features
+          # These examples need no features/dependencies. Avoid depending on
+          # Cargo's internal dependency-artifact directory layout.
+          cargo build --locked --no-default-features
           rustdoc --test --edition 2024 docs/GUIDE.md -D warnings \
-            --extern irig106_types="$PWD/target/debug/libirig106_types.rlib" \
-            -L dependency="$PWD/target/debug/deps"
+            --extern irig106_types="$PWD/target/debug/libirig106_types.rlib"
 
   wasm:
     name: WASM Build
